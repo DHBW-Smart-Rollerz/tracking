@@ -31,6 +31,7 @@ setup(
     entry_points={
         "console_scripts": [
             f"ros2_example_node = {package_name}.ros2_example_node:main",
+            f"object_tracking_node = {package_name}.object_tracking_node:main",
         ],
     },
 )

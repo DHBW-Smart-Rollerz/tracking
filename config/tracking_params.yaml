@@ -1,0 +1,5 @@
+object_tracking_node:
+  ros__parameters:
+    debug: true
+    detection_topic: "/object_detection/object"
+    tracking_output_topic: "/object_tracking/tracked_objects"
