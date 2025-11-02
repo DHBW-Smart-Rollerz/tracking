@@ -47,6 +47,11 @@ class ObjectTrackingNode(rclpy.node.Node):
             Float32MultiArray, self.detection_topic, self.detection_callback, 10
         )
 
+        # Initialize the publisher for tracked objects
+        self.tracking_publisher = self.create_publisher(
+            Float32MultiArray, self.tracking_output_topic, 10
+        )
+
     def detection_callback(self, msg: Float32MultiArray):
         """
         Callback executed when new detections are received.
@@ -58,7 +63,6 @@ class ObjectTrackingNode(rclpy.node.Node):
             self.get_logger().info("=" * 60)
             self.get_logger().info("Received detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
-            self.get_logger().info(f"Layout: {msg.layout}")
 
         # Parse the detection data
         detections = self.parse_detections(msg)
@@ -68,8 +72,24 @@ class ObjectTrackingNode(rclpy.node.Node):
             for i, det in enumerate(detections):
                 self.get_logger().info(f"  Detection {i}: {det}")
 
-        # TODO: Implement actual tracking logic here
-        # For now, we just print what we receive
+        # Create mock tracked objects from detections
+        tracked_objects = self.create_mock_tracks(detections)
+
+        # Publish tracked objects
+        if tracked_objects:
+            tracking_msg = self.create_tracking_message(tracked_objects)
+            self.tracking_publisher.publish(tracking_msg)
+
+            if self.debug:
+                self.get_logger().info(
+                    f"Published {len(tracked_objects)} tracked object(s)"
+                )
+                for track in tracked_objects:
+                    self.get_logger().info(
+                        f"  Track ID {track['track_id']}: "
+                        f"pos=({track['center']['x']:.1f}, {track['center']['y']:.1f}), "
+                        f"confidence={track['confidence']:.3f}"
+                    )
 
     def parse_detections(self, msg: Float32MultiArray):
         """
@@ -134,6 +154,74 @@ class ObjectTrackingNode(rclpy.node.Node):
             detections.append(detection)
 
         return detections
+
+    def create_mock_tracks(self, detections):
+        """
+        Create mock tracked objects from detections.
+
+        For now, this is a simple mock implementation:
+        - Each detection gets a new track ID
+        - In a real implementation, you would use a tracking algorithm
+          to associate detections across frames
+
+        Args:
+            detections: List of detection dictionaries
+
+        Returns:
+            List of tracked object dictionaries
+        """
+        tracked_objects = []
+
+        for detection in detections:
+            # Create a tracked object
+            tracked_obj = {
+                "track_id": self.next_track_id,
+                "class_id": detection["class_id"],
+                "center": detection["center"],
+                "width": detection["width"],
+                "confidence": detection["score"],
+                "bottom_left": detection["bottom_left"],
+                "bottom_right": detection["bottom_right"],
+            }
+
+            tracked_objects.append(tracked_obj)
+
+            # Increment track ID for next object
+            # TODO: In a real implementation, track IDs should persist across frames
+            self.next_track_id += 1
+
+        return tracked_objects
+
+    def create_tracking_message(self, tracked_objects):
+        """
+        Create a Float32MultiArray message from tracked objects.
+
+        Message format per tracked object:
+        [track_id, center_x, center_y, confidence, class_id, width]
+
+        Args:
+            tracked_objects: List of tracked object dictionaries
+
+        Returns:
+            Float32MultiArray message
+        """
+        msg = Float32MultiArray()
+        data = []
+
+        for obj in tracked_objects:
+            data.extend(
+                [
+                    float(obj["track_id"]),
+                    float(obj["center"]["x"]),
+                    float(obj["center"]["y"]),
+                    float(obj["confidence"]),
+                    float(obj["class_id"]),
+                    float(obj["width"]),
+                ]
+            )
+
+        msg.data = data
+        return msg
 
 
 def main(args=None):
