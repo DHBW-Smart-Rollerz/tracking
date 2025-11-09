@@ -1,5 +1,40 @@
+# Object Tracking Node Parameters
+# Copy this to your config/ directory
+
 object_tracking_node:
   ros__parameters:
+    # Node settings
     debug: true
     detection_topic: "/object_detection/object"
     tracking_output_topic: "/object_tracking/tracked_objects"
+
+    # Time step (must match your detection rate!)
+    # 10 Hz = 0.1s, 20 Hz = 0.05s
+    dt: 0.1
+
+    # Track management
+    max_age: 5              # Max frames without update before deletion
+    min_hits: 3             # Min successful updates for track confirmation
+    min_age: 3              # Min frames for track confirmation
+
+    # Data association
+    max_distance: 500.0     # Max Mahalanobis distance for matching (mm)
+                            # Larger = more permissive matching
+                            # Smaller = stricter matching
+
+    # Valid tracking area
+    max_x: 5000.0           # Max x position (mm) - forward range
+    max_y: 3000.0           # Max y position (mm) - lateral range
+
+    # Kalman Filter: Process noise
+    # Higher values = trust model less, rely more on measurements
+    q_pos: 50.0             # Position process noise (mm)
+    q_vel: 100.0            # Velocity process noise (mm/s)
+
+    # Kalman Filter: Measurement noise
+    # Higher values = trust measurements less
+    r_pos: 100.0            # Position measurement noise (mm)
+
+    # Kalman Filter: Initial uncertainty
+    sigma_pos_init: 500.0   # Initial position uncertainty (mm)
+    sigma_vel_init: 1000.0  # Initial velocity uncertainty (mm/s)

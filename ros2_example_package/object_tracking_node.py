@@ -1,13 +1,22 @@
-"""Object Tracking Node for tracking detected objects."""
+"""
+Multi-Topic Object Tracking Node for tracking both objects and signs.
+
+This node maintains two separate trackers:
+- One for moving objects (cars, pedestrians) from /object_detection/object
+- One for static signs from /object_detection/sign
+
+Each tracker has its own optimized parameters.
+"""
 
 import rclpy
 import rclpy.node
 from std_msgs.msg import Float32MultiArray
-from timing import timer
+
+from ros2_example_package.tracker import MultiObjectTracker
 
 
 class ObjectTrackingNode(rclpy.node.Node):
-    """ROS2 Object Tracking Node."""
+    """ROS2 Object Tracking Node with separate trackers for objects and signs."""
 
     def __init__(self):
         """Initialize the ObjectTrackingNode."""
@@ -16,80 +25,282 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Load parameters
         self.load_ros_params()
 
-        # Initialize subscriber
-        self.init_subscriber()
+        # Initialize two separate trackers with different parameters
+        self.object_tracker = self._create_object_tracker()
+        self.sign_tracker = self._create_sign_tracker()
 
-        # Initialize tracking variables
-        self.tracked_objects = {}  # Dictionary to store tracked objects
-        self.next_track_id = 0
+        # Initialize subscribers and publishers
+        self.init_subscribers()
 
-        self.get_logger().info("ObjectTrackingNode initialized")
-        self.get_logger().info(f"Listening on topic: {self.detection_topic}")
+        self.get_logger().info("ObjectTrackingNode initialized with dual trackers")
+        self.get_logger().info(f"Object detection topic: {self.object_detection_topic}")
+        self.get_logger().info(f"Sign detection topic: {self.sign_detection_topic}")
+        self.get_logger().info(f"Object tracking output: {self.object_tracking_topic}")
+        self.get_logger().info(f"Sign tracking output: {self.sign_tracking_topic}")
+
+    def _create_object_tracker(self):
+        """
+        Create tracker for moving objects (cars, pedestrians).
+
+        Uses standard parameters optimized for dynamic objects.
+
+        Returns:
+            MultiObjectTracker instance for objects
+        """
+        return MultiObjectTracker(
+            dt=self.dt,
+            max_age=self.object_max_age,
+            min_hits=self.object_min_hits,
+            min_age=self.object_min_age,
+            max_distance=self.object_max_distance,
+            max_x=self.max_x,
+            max_y=self.max_y,
+            q_pos=self.object_q_pos,
+            q_vel=self.object_q_vel,
+            r_pos=self.object_r_pos,
+            sigma_pos_init=self.object_sigma_pos_init,
+            sigma_vel_init=self.object_sigma_vel_init,
+        )
+
+    def _create_sign_tracker(self):
+        """
+        Create tracker for static signs.
+
+        Uses optimized parameters for static objects:
+        - Longer max_age (signs don't disappear quickly)
+        - Fewer min_hits (faster confirmation)
+        - Lower process noise (signs don't move)
+
+        Returns:
+            MultiObjectTracker instance for signs
+        """
+        return MultiObjectTracker(
+            dt=self.dt,
+            max_age=self.sign_max_age,
+            min_hits=self.sign_min_hits,
+            min_age=self.sign_min_age,
+            max_distance=self.sign_max_distance,
+            max_x=self.max_x,
+            max_y=self.max_y,
+            q_pos=self.sign_q_pos,
+            q_vel=self.sign_q_vel,
+            r_pos=self.sign_r_pos,
+            sigma_pos_init=self.sign_sigma_pos_init,
+            sigma_vel_init=self.sign_sigma_vel_init,
+        )
 
     def load_ros_params(self):
         """Get parameters from the ROS parameter server."""
         self.declare_parameters(
             namespace="",
             parameters=[
+                # Node parameters
                 ("debug", True),
-                ("detection_topic", "/object_detection/object"),
-                ("tracking_output_topic", "/object_tracking/tracked_objects"),
+                ("object_detection_topic", "/object_detection/object"),
+                ("sign_detection_topic", "/object_detection/sign"),
+                ("object_tracking_topic", "/object_tracking/tracked_objects"),
+                ("sign_tracking_topic", "/sign_tracking/tracked_signs"),
+                # Common parameters
+                ("dt", 0.1),  # Time step in seconds (10 Hz)
+                ("max_x", 5000.0),  # Max valid x position (mm)
+                ("max_y", 3000.0),  # Max valid y position (mm)
+                # Object tracker parameters (moving objects)
+                ("object_max_age", 5),  # Max frames without update
+                ("object_min_hits", 3),  # Min hits for confirmation
+                ("object_min_age", 3),  # Min age for confirmation
+                ("object_max_distance", 500.0),  # Max Mahalanobis distance (mm)
+                ("object_q_pos", 50.0),  # Process noise: position (mm)
+                ("object_q_vel", 100.0),  # Process noise: velocity (mm/s)
+                ("object_r_pos", 100.0),  # Measurement noise: position (mm)
+                ("object_sigma_pos_init", 500.0),  # Initial position uncertainty (mm)
+                (
+                    "object_sigma_vel_init",
+                    1000.0,
+                ),  # Initial velocity uncertainty (mm/s)
+                # Sign tracker parameters (static objects)
+                ("sign_max_age", 10),  # Longer for signs (don't disappear)
+                ("sign_min_hits", 2),  # Faster confirmation for signs
+                ("sign_min_age", 2),  # Shorter confirmation time
+                ("sign_max_distance", 500.0),  # Max Mahalanobis distance (mm)
+                ("sign_q_pos", 25.0),  # Lower process noise (static)
+                ("sign_q_vel", 50.0),  # Lower velocity noise
+                ("sign_r_pos", 100.0),  # Measurement noise: position (mm)
+                ("sign_sigma_pos_init", 300.0),  # Lower initial position uncertainty
+                ("sign_sigma_vel_init", 500.0),  # Lower initial velocity uncertainty
             ],
         )
 
+        # Node parameters
         self.debug = self.get_parameter("debug").value
-        self.detection_topic = self.get_parameter("detection_topic").value
-        self.tracking_output_topic = self.get_parameter("tracking_output_topic").value
+        self.object_detection_topic = self.get_parameter("object_detection_topic").value
+        self.sign_detection_topic = self.get_parameter("sign_detection_topic").value
+        self.object_tracking_topic = self.get_parameter("object_tracking_topic").value
+        self.sign_tracking_topic = self.get_parameter("sign_tracking_topic").value
 
-    def init_subscriber(self):
-        """Initialize the subscriber for object detections."""
-        self.detection_subscriber = self.create_subscription(
-            Float32MultiArray, self.detection_topic, self.detection_callback, 10
+        # Common parameters
+        self.dt = self.get_parameter("dt").value
+        self.max_x = self.get_parameter("max_x").value
+        self.max_y = self.get_parameter("max_y").value
+
+        # Object tracker parameters
+        self.object_max_age = self.get_parameter("object_max_age").value
+        self.object_min_hits = self.get_parameter("object_min_hits").value
+        self.object_min_age = self.get_parameter("object_min_age").value
+        self.object_max_distance = self.get_parameter("object_max_distance").value
+        self.object_q_pos = self.get_parameter("object_q_pos").value
+        self.object_q_vel = self.get_parameter("object_q_vel").value
+        self.object_r_pos = self.get_parameter("object_r_pos").value
+        self.object_sigma_pos_init = self.get_parameter("object_sigma_pos_init").value
+        self.object_sigma_vel_init = self.get_parameter("object_sigma_vel_init").value
+
+        # Sign tracker parameters
+        self.sign_max_age = self.get_parameter("sign_max_age").value
+        self.sign_min_hits = self.get_parameter("sign_min_hits").value
+        self.sign_min_age = self.get_parameter("sign_min_age").value
+        self.sign_max_distance = self.get_parameter("sign_max_distance").value
+        self.sign_q_pos = self.get_parameter("sign_q_pos").value
+        self.sign_q_vel = self.get_parameter("sign_q_vel").value
+        self.sign_r_pos = self.get_parameter("sign_r_pos").value
+        self.sign_sigma_pos_init = self.get_parameter("sign_sigma_pos_init").value
+        self.sign_sigma_vel_init = self.get_parameter("sign_sigma_vel_init").value
+
+    def init_subscribers(self):
+        """Initialize subscribers for detections and publishers for tracked objects."""
+        # Subscribe to object detections
+        self.object_detection_subscriber = self.create_subscription(
+            Float32MultiArray,
+            self.object_detection_topic,
+            self.object_detection_callback,
+            10,
         )
 
-        # Initialize the publisher for tracked objects
-        self.tracking_publisher = self.create_publisher(
-            Float32MultiArray, self.tracking_output_topic, 10
+        # Subscribe to sign detections
+        self.sign_detection_subscriber = self.create_subscription(
+            Float32MultiArray,
+            self.sign_detection_topic,
+            self.sign_detection_callback,
+            10,
         )
 
-    def detection_callback(self, msg: Float32MultiArray):
+        # Publisher for tracked objects
+        self.object_tracking_publisher = self.create_publisher(
+            Float32MultiArray, self.object_tracking_topic, 10
+        )
+
+        # Publisher for tracked signs
+        self.sign_tracking_publisher = self.create_publisher(
+            Float32MultiArray, self.sign_tracking_topic, 10
+        )
+
+    def object_detection_callback(self, msg: Float32MultiArray):
         """
-        Callback executed when new detections are received.
+        Callback for object detections (cars, pedestrians).
 
         Args:
             msg: Float32MultiArray containing detection data
         """
         if self.debug:
             self.get_logger().info("=" * 60)
-            self.get_logger().info("Received detection message!")
+            self.get_logger().info("Received OBJECT detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
 
         # Parse the detection data
         detections = self.parse_detections(msg)
 
         if self.debug and detections:
-            self.get_logger().info(f"Parsed {len(detections)} detection(s):")
+            self.get_logger().info(f"Parsed {len(detections)} object detection(s):")
             for i, det in enumerate(detections):
-                self.get_logger().info(f"  Detection {i}: {det}")
+                self.get_logger().info(
+                    f"  Detection {i}: class={det['class_id']}, "
+                    f"pos=({det['center']['x']:.1f}, {det['center']['y']:.1f}), "
+                    f"score={det['score']:.3f}"
+                )
 
-        # Create mock tracked objects from detections
-        tracked_objects = self.create_mock_tracks(detections)
+        # Update tracker with detections
+        confirmed_tracks = self.object_tracker.update(detections)
 
-        # Publish tracked objects
-        if tracked_objects:
-            tracking_msg = self.create_tracking_message(tracked_objects)
-            self.tracking_publisher.publish(tracking_msg)
+        if self.debug:
+            # Log tracker statistics
+            stats = self.object_tracker.get_statistics()
+            self.get_logger().info(
+                f"Object tracker stats: active={stats['active_tracks']}, "
+                f"confirmed={stats['confirmed_tracks']}, "
+                f"frame={stats['frame_count']}"
+            )
+
+        # Publish confirmed tracks
+        if confirmed_tracks:
+            tracking_msg = self.create_tracking_message(confirmed_tracks)
+            self.object_tracking_publisher.publish(tracking_msg)
 
             if self.debug:
                 self.get_logger().info(
-                    f"Published {len(tracked_objects)} tracked object(s)"
+                    f"Published {len(confirmed_tracks)} confirmed object track(s):"
                 )
-                for track in tracked_objects:
+                for track in confirmed_tracks:
                     self.get_logger().info(
-                        f"  Track ID {track['track_id']}: "
-                        f"pos=({track['center']['x']:.1f}, {track['center']['y']:.1f}), "
-                        f"confidence={track['confidence']:.3f}"
+                        f"  Track ID {track['track_id']}: class={track['class_id']}, "
+                        f"pos=({track['position']['x']:.1f}, {track['position']['y']:.1f}), "
+                        f"vel=({track['velocity']['vx']:.1f}, {track['velocity']['vy']:.1f}), "
+                        f"confidence={track['confidence']:.3f}, hits={track['hits']}"
                     )
+        elif self.debug:
+            self.get_logger().info("No confirmed object tracks to publish")
+
+    def sign_detection_callback(self, msg: Float32MultiArray):
+        """
+        Callback for sign detections.
+
+        Args:
+            msg: Float32MultiArray containing detection data
+        """
+        if self.debug:
+            self.get_logger().info("=" * 60)
+            self.get_logger().info("Received SIGN detection message!")
+            self.get_logger().info(f"Data length: {len(msg.data)}")
+
+        # Parse the detection data
+        detections = self.parse_detections(msg)
+
+        if self.debug and detections:
+            self.get_logger().info(f"Parsed {len(detections)} sign detection(s):")
+            for i, det in enumerate(detections):
+                self.get_logger().info(
+                    f"  Detection {i}: class={det['class_id']}, "
+                    f"pos=({det['center']['x']:.1f}, {det['center']['y']:.1f}), "
+                    f"score={det['score']:.3f}"
+                )
+
+        # Update tracker with detections
+        confirmed_tracks = self.sign_tracker.update(detections)
+
+        if self.debug:
+            # Log tracker statistics
+            stats = self.sign_tracker.get_statistics()
+            self.get_logger().info(
+                f"Sign tracker stats: active={stats['active_tracks']}, "
+                f"confirmed={stats['confirmed_tracks']}, "
+                f"frame={stats['frame_count']}"
+            )
+
+        # Publish confirmed tracks
+        if confirmed_tracks:
+            tracking_msg = self.create_tracking_message(confirmed_tracks)
+            self.sign_tracking_publisher.publish(tracking_msg)
+
+            if self.debug:
+                self.get_logger().info(
+                    f"Published {len(confirmed_tracks)} confirmed sign track(s):"
+                )
+                for track in confirmed_tracks:
+                    self.get_logger().info(
+                        f"  Track ID {track['track_id']}: class={track['class_id']}, "
+                        f"pos=({track['position']['x']:.1f}, {track['position']['y']:.1f}), "
+                        f"vel=({track['velocity']['vx']:.1f}, {track['velocity']['vy']:.1f}), "
+                        f"confidence={track['confidence']:.3f}, hits={track['hits']}"
+                    )
+        elif self.debug:
+            self.get_logger().info("No confirmed sign tracks to publish")
 
     def parse_detections(self, msg: Float32MultiArray):
         """
@@ -100,15 +311,15 @@ class ObjectTrackingNode(rclpy.node.Node):
 
         Where:
         - class_id: Object class identifier (int)
-        - bottom_left_x/y: Bottom-left corner in world coordinates (mm or cm)
-        - bottom_right_x/y: Bottom-right corner in world coordinates (mm or cm)
+        - bottom_left_x/y: Bottom-left corner in world coordinates (mm)
+        - bottom_right_x/y: Bottom-right corner in world coordinates (mm)
         - score: Detection confidence (0.0 - 1.0)
 
         Args:
             msg: Float32MultiArray message
 
         Returns:
-            List of detection dictionaries
+            List of detection dictionaries suitable for tracker.update()
         """
         data = msg.data
 
@@ -130,77 +341,41 @@ class ObjectTrackingNode(rclpy.node.Node):
 
         detections = []
         for i in range(0, len(data), values_per_detection):
-            # Calculate center and dimensions from corner points
+            # Extract corner points
             bottom_left_x = data[i + 1]
             bottom_left_y = data[i + 2]
             bottom_right_x = data[i + 3]
             bottom_right_y = data[i + 4]
 
-            # Center point (average of two bottom corners)
+            # Calculate center point (average of two bottom corners)
             center_x = (bottom_left_x + bottom_right_x) / 2.0
             center_y = (bottom_left_y + bottom_right_y) / 2.0
 
             # Width from distance between left and right corners
             width = abs(bottom_right_x - bottom_left_x)
 
+            # Create detection dictionary for tracker
             detection = {
                 "class_id": int(data[i]),
                 "score": data[i + 5],
-                "bottom_left": {"x": bottom_left_x, "y": bottom_left_y},
-                "bottom_right": {"x": bottom_right_x, "y": bottom_right_y},
                 "center": {"x": center_x, "y": center_y},
                 "width": width,
+                "bottom_left": {"x": bottom_left_x, "y": bottom_left_y},
+                "bottom_right": {"x": bottom_right_x, "y": bottom_right_y},
             }
             detections.append(detection)
 
         return detections
-
-    def create_mock_tracks(self, detections):
-        """
-        Create mock tracked objects from detections.
-
-        For now, this is a simple mock implementation:
-        - Each detection gets a new track ID
-        - In a real implementation, you would use a tracking algorithm
-          to associate detections across frames
-
-        Args:
-            detections: List of detection dictionaries
-
-        Returns:
-            List of tracked object dictionaries
-        """
-        tracked_objects = []
-
-        for detection in detections:
-            # Create a tracked object
-            tracked_obj = {
-                "track_id": self.next_track_id,
-                "class_id": detection["class_id"],
-                "center": detection["center"],
-                "width": detection["width"],
-                "confidence": detection["score"],
-                "bottom_left": detection["bottom_left"],
-                "bottom_right": detection["bottom_right"],
-            }
-
-            tracked_objects.append(tracked_obj)
-
-            # Increment track ID for next object
-            # TODO: In a real implementation, track IDs should persist across frames
-            self.next_track_id += 1
-
-        return tracked_objects
 
     def create_tracking_message(self, tracked_objects):
         """
         Create a Float32MultiArray message from tracked objects.
 
         Message format per tracked object:
-        [track_id, center_x, center_y, confidence, class_id, width]
+        [track_id, class_id, x, y, vx, vy, confidence, width]
 
         Args:
-            tracked_objects: List of tracked object dictionaries
+            tracked_objects: List of tracked object dictionaries from tracker.get_confirmed_tracks()
 
         Returns:
             Float32MultiArray message
@@ -212,10 +387,12 @@ class ObjectTrackingNode(rclpy.node.Node):
             data.extend(
                 [
                     float(obj["track_id"]),
-                    float(obj["center"]["x"]),
-                    float(obj["center"]["y"]),
-                    float(obj["confidence"]),
                     float(obj["class_id"]),
+                    float(obj["position"]["x"]),
+                    float(obj["position"]["y"]),
+                    float(obj["velocity"]["vx"]),
+                    float(obj["velocity"]["vy"]),
+                    float(obj["confidence"]),
                     float(obj["width"]),
                 ]
             )
@@ -239,6 +416,32 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        # Log final statistics before shutdown
+        object_stats = node.object_tracker.get_statistics()
+        sign_stats = node.sign_tracker.get_statistics()
+
+        node.get_logger().info("=" * 60)
+        node.get_logger().info("Shutting down Object Tracking Node")
+        node.get_logger().info("=" * 60)
+        node.get_logger().info("Object Tracker Statistics:")
+        node.get_logger().info(
+            f"  Total frames processed: {object_stats['frame_count']}"
+        )
+        node.get_logger().info(
+            f"  Total tracks created: {object_stats['total_created']}"
+        )
+        node.get_logger().info(
+            f"  Total tracks deleted: {object_stats['total_deleted']}"
+        )
+        node.get_logger().info(f"  Active tracks: {object_stats['active_tracks']}")
+        node.get_logger().info("-" * 60)
+        node.get_logger().info("Sign Tracker Statistics:")
+        node.get_logger().info(f"  Total frames processed: {sign_stats['frame_count']}")
+        node.get_logger().info(f"  Total tracks created: {sign_stats['total_created']}")
+        node.get_logger().info(f"  Total tracks deleted: {sign_stats['total_deleted']}")
+        node.get_logger().info(f"  Active tracks: {sign_stats['active_tracks']}")
+        node.get_logger().info("=" * 60)
+
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

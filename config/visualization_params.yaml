@@ -1,0 +1,14 @@
+tracking_visualization_node:
+  ros__parameters:
+    image_topic: "/camera/image/undistorted"
+    tracking_topic: "/object_tracking/tracked_objects"
+    output_topic: "/object_tracking/debug/image"
+
+    # Visualisierungsoptionen
+    show_velocity: true
+    show_trail: false
+
+    # Stil
+    box_thickness: 2
+    text_scale: 0.6
+    velocity_scale: 0.1

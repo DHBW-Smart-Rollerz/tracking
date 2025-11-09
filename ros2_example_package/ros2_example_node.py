@@ -9,7 +9,7 @@ import std_msgs.msg
 from ament_index_python.packages import get_package_share_directory
 from timing import timer
 
-from ros2_example_package.example_model import model
+from ros2_example_package.tracker import model
 
 
 class ROS2ExampleNode(rclpy.node.Node):
