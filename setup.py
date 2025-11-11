@@ -3,7 +3,7 @@ import os
 from setup_utils import include_directory
 from setuptools import find_packages, setup
 
-package_name = "ros2_example_package"
+package_name = "tracking"
 
 setup(
     name=package_name,
@@ -30,7 +30,6 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            f"ros2_example_node = {package_name}.ros2_example_node:main",
             f"object_tracking_node = {package_name}.object_tracking_node:main",
             f"tracking_visualization_node = {package_name}.tracking_visualization_node:main",
         ],

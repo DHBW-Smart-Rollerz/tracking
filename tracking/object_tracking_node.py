@@ -9,34 +9,86 @@ Each tracker has its own optimized parameters.
 """
 
 import rclpy
-import rclpy.node
+from smarty_utils.enums import NodeState
+from smarty_utils.smarty_node import SmartyNode
 from std_msgs.msg import Float32MultiArray
 
-from ros2_example_package.tracker import MultiObjectTracker
+from tracking.tracker import MultiObjectTracker
 
 
-class ObjectTrackingNode(rclpy.node.Node):
+class ObjectTrackingNode(SmartyNode):
     """ROS2 Object Tracking Node with separate trackers for objects and signs."""
 
     def __init__(self):
         """Initialize the ObjectTrackingNode."""
-        super().__init__("object_tracking_node")
-
-        # Load parameters
-        self.load_ros_params()
+        super().__init__(
+            "object_tracking_node",
+            "tracking",
+            node_parameters={
+                # Subscriber topics
+                "image_subscriber": "/camera/image/undistorted",
+                "object_detection_subscriber": "/object_detection/object",
+                "sign_detection__subscriber": "/object_detection/sign",
+                # Publisher topics
+                "object_tracking_publisher": "/object_tracking/tracked_objects",
+                "sign_tracking_publisher": "/sign_tracking/tracked_signs",
+                # Parameters
+                "state": NodeState.ACTIVE.value,
+                "debug": False,
+                # Common parameters
+                "dt": 0.1,  # Time step in seconds (10 Hz)
+                "max_x": 5000.0,  # Max valid x position (mm)
+                "max_y": 3000.0,  # Max valid y position (mm)
+                # Object tracker parameters (moving objects)
+                "object_max_age": 5,  # Max frames without update
+                "object_min_hits": 3,  # Min hits for confirmation
+                "object_min_age": 3,  # Min age for confirmation
+                "object_max_distance": 500.0,  # Max Mahalanobis distance (mm)
+                "object_q_pos": 50.0,  # Process noise: position (mm)
+                "object_q_vel": 100.0,  # Process noise: velocity (mm/s)
+                "object_r_pos": 100.0,  # Measurement noise: position (mm)
+                "object_sigma_pos_init": 500.0,  # Initial position uncertainty (mm)
+                "object_sigma_vel_init": 1000.0,  # Initial velocity uncertainty (mm/s)
+                # Sign tracker parameters (static objects)
+                "sign_max_age": 10,  # Longer for signs (don't disappear)
+                "sign_min_hits": 2,  # Faster confirmation for signs
+                "sign_min_age": 2,  # Shorter confirmation time
+                "sign_max_distance": 500.0,  # Max Mahalanobis distance (mm)
+                "sign_q_pos": 25.0,  # Lower process noise (static)
+                "sign_q_vel": 50.0,  # Lower velocity noise
+                "sign_r_pos": 100.0,  # Measurement noise: position (mm)
+                "sign_sigma_pos_init": 300.0,  # Lower initial position uncertainty
+                "sign_sigma_vel_init": 500.0,  # Lower initial velocity uncertainty
+            },
+            subscribed_topics={
+                "object_detection_subscriber": (
+                    Float32MultiArray,
+                    self.object_detection_callback,
+                    1,
+                ),
+                "sign_detection__subscriber": (
+                    Float32MultiArray,
+                    self.sign_detection_callback,
+                    1,
+                ),
+            },
+            published_topics={
+                "object_tracking_publisher": (Float32MultiArray, 1),
+                "sign_tracking_publisher": (Float32MultiArray, 1),
+            },
+        )
 
         # Initialize two separate trackers with different parameters
         self.object_tracker = self._create_object_tracker()
         self.sign_tracker = self._create_sign_tracker()
 
-        # Initialize subscribers and publishers
-        self.init_subscribers()
-
         self.get_logger().info("ObjectTrackingNode initialized with dual trackers")
-        self.get_logger().info(f"Object detection topic: {self.object_detection_topic}")
-        self.get_logger().info(f"Sign detection topic: {self.sign_detection_topic}")
-        self.get_logger().info(f"Object tracking output: {self.object_tracking_topic}")
-        self.get_logger().info(f"Sign tracking output: {self.sign_tracking_topic}")
+        self.get_logger().info("Subscribed topics:")
+        for key, (msg_type, callback, queue_size) in self.subscribed_topics.items():
+            self.get_logger().info(f"  {key}: {self.get_parameter(key).value}")
+        self.get_logger().info("Published topics:")
+        for key, (msg_type, queue_size) in self.published_topics.items():
+            self.get_logger().info(f"  {key}: {self.get_parameter(key).value}")
 
     def _create_object_tracker(self):
         """
@@ -89,108 +141,110 @@ class ObjectTrackingNode(rclpy.node.Node):
             sigma_vel_init=self.sign_sigma_vel_init,
         )
 
-    def load_ros_params(self):
-        """Get parameters from the ROS parameter server."""
-        self.declare_parameters(
-            namespace="",
-            parameters=[
-                # Node parameters
-                ("debug", True),
-                ("object_detection_topic", "/object_detection/object"),
-                ("sign_detection_topic", "/object_detection/sign"),
-                ("object_tracking_topic", "/object_tracking/tracked_objects"),
-                ("sign_tracking_topic", "/sign_tracking/tracked_signs"),
-                # Common parameters
-                ("dt", 0.1),  # Time step in seconds (10 Hz)
-                ("max_x", 5000.0),  # Max valid x position (mm)
-                ("max_y", 3000.0),  # Max valid y position (mm)
-                # Object tracker parameters (moving objects)
-                ("object_max_age", 5),  # Max frames without update
-                ("object_min_hits", 3),  # Min hits for confirmation
-                ("object_min_age", 3),  # Min age for confirmation
-                ("object_max_distance", 500.0),  # Max Mahalanobis distance (mm)
-                ("object_q_pos", 50.0),  # Process noise: position (mm)
-                ("object_q_vel", 100.0),  # Process noise: velocity (mm/s)
-                ("object_r_pos", 100.0),  # Measurement noise: position (mm)
-                ("object_sigma_pos_init", 500.0),  # Initial position uncertainty (mm)
-                (
-                    "object_sigma_vel_init",
-                    1000.0,
-                ),  # Initial velocity uncertainty (mm/s)
-                # Sign tracker parameters (static objects)
-                ("sign_max_age", 10),  # Longer for signs (don't disappear)
-                ("sign_min_hits", 2),  # Faster confirmation for signs
-                ("sign_min_age", 2),  # Shorter confirmation time
-                ("sign_max_distance", 500.0),  # Max Mahalanobis distance (mm)
-                ("sign_q_pos", 25.0),  # Lower process noise (static)
-                ("sign_q_vel", 50.0),  # Lower velocity noise
-                ("sign_r_pos", 100.0),  # Measurement noise: position (mm)
-                ("sign_sigma_pos_init", 300.0),  # Lower initial position uncertainty
-                ("sign_sigma_vel_init", 500.0),  # Lower initial velocity uncertainty
-            ],
-        )
+    @property
+    def dt(self) -> float:
+        """Return the time step parameter."""
+        return self.get_parameter("dt").value  # type: ignore
 
-        # Node parameters
-        self.debug = self.get_parameter("debug").value
-        self.object_detection_topic = self.get_parameter("object_detection_topic").value
-        self.sign_detection_topic = self.get_parameter("sign_detection_topic").value
-        self.object_tracking_topic = self.get_parameter("object_tracking_topic").value
-        self.sign_tracking_topic = self.get_parameter("sign_tracking_topic").value
+    @property
+    def max_x(self) -> float:
+        """Return the max_x parameter."""
+        return self.get_parameter("max_x").value  # type: ignore
 
-        # Common parameters
-        self.dt = self.get_parameter("dt").value
-        self.max_x = self.get_parameter("max_x").value
-        self.max_y = self.get_parameter("max_y").value
+    @property
+    def max_y(self) -> float:
+        """Return the max_y parameter."""
+        return self.get_parameter("max_y").value  # type: ignore
 
-        # Object tracker parameters
-        self.object_max_age = self.get_parameter("object_max_age").value
-        self.object_min_hits = self.get_parameter("object_min_hits").value
-        self.object_min_age = self.get_parameter("object_min_age").value
-        self.object_max_distance = self.get_parameter("object_max_distance").value
-        self.object_q_pos = self.get_parameter("object_q_pos").value
-        self.object_q_vel = self.get_parameter("object_q_vel").value
-        self.object_r_pos = self.get_parameter("object_r_pos").value
-        self.object_sigma_pos_init = self.get_parameter("object_sigma_pos_init").value
-        self.object_sigma_vel_init = self.get_parameter("object_sigma_vel_init").value
+    @property
+    def object_max_age(self) -> int:
+        """Return the object_max_age parameter."""
+        return self.get_parameter("object_max_age").value  # type: ignore
 
-        # Sign tracker parameters
-        self.sign_max_age = self.get_parameter("sign_max_age").value
-        self.sign_min_hits = self.get_parameter("sign_min_hits").value
-        self.sign_min_age = self.get_parameter("sign_min_age").value
-        self.sign_max_distance = self.get_parameter("sign_max_distance").value
-        self.sign_q_pos = self.get_parameter("sign_q_pos").value
-        self.sign_q_vel = self.get_parameter("sign_q_vel").value
-        self.sign_r_pos = self.get_parameter("sign_r_pos").value
-        self.sign_sigma_pos_init = self.get_parameter("sign_sigma_pos_init").value
-        self.sign_sigma_vel_init = self.get_parameter("sign_sigma_vel_init").value
+    @property
+    def object_min_hits(self) -> int:
+        """Return the object_min_hits parameter."""
+        return self.get_parameter("object_min_hits").value  # type: ignore
 
-    def init_subscribers(self):
-        """Initialize subscribers for detections and publishers for tracked objects."""
-        # Subscribe to object detections
-        self.object_detection_subscriber = self.create_subscription(
-            Float32MultiArray,
-            self.object_detection_topic,
-            self.object_detection_callback,
-            10,
-        )
+    @property
+    def object_min_age(self) -> int:
+        """Return the object_min_age parameter."""
+        return self.get_parameter("object_min_age").value  # type: ignore
 
-        # Subscribe to sign detections
-        self.sign_detection_subscriber = self.create_subscription(
-            Float32MultiArray,
-            self.sign_detection_topic,
-            self.sign_detection_callback,
-            10,
-        )
+    @property
+    def object_max_distance(self) -> float:
+        """Return the object_max_distance parameter."""
+        return self.get_parameter("object_max_distance").value  # type: ignore
 
-        # Publisher for tracked objects
-        self.object_tracking_publisher = self.create_publisher(
-            Float32MultiArray, self.object_tracking_topic, 10
-        )
+    @property
+    def object_q_pos(self) -> float:
+        """Return the object_q_pos parameter."""
+        return self.get_parameter("object_q_pos").value  # type: ignore
 
-        # Publisher for tracked signs
-        self.sign_tracking_publisher = self.create_publisher(
-            Float32MultiArray, self.sign_tracking_topic, 10
-        )
+    @property
+    def object_q_vel(self) -> float:
+        """Return the object_q_vel parameter."""
+        return self.get_parameter("object_q_vel").value  # type: ignore
+
+    @property
+    def object_r_pos(self) -> float:
+        """Return the object_r_pos parameter."""
+        return self.get_parameter("object_r_pos").value  # type: ignore
+
+    @property
+    def object_sigma_pos_init(self) -> float:
+        """Return the object_sigma_pos_init parameter."""
+        return self.get_parameter("object_sigma_pos_init").value  # type: ignore
+
+    @property
+    def object_sigma_vel_init(self) -> float:
+        """Return the object_sigma_vel_init parameter."""
+        return self.get_parameter("object_sigma_vel_init").value  # type: ignore
+
+    @property
+    def sign_max_age(self) -> int:
+        """Return the sign_max_age parameter."""
+        return self.get_parameter("sign_max_age").value  # type: ignore
+
+    @property
+    def sign_min_hits(self) -> int:
+        """Return the sign_min_hits parameter."""
+        return self.get_parameter("sign_min_hits").value  # type: ignore
+
+    @property
+    def sign_min_age(self) -> int:
+        """Return the sign_min_age parameter."""
+        return self.get_parameter("sign_min_age").value  # type: ignore
+
+    @property
+    def sign_max_distance(self) -> float:
+        """Return the sign_max_distance parameter."""
+        return self.get_parameter("sign_max_distance").value  # type: ignore
+
+    @property
+    def sign_q_pos(self) -> float:
+        """Return the sign_q_pos parameter."""
+        return self.get_parameter("sign_q_pos").value  # type: ignore
+
+    @property
+    def sign_q_vel(self) -> float:
+        """Return the sign_q_vel parameter."""
+        return self.get_parameter("sign_q_vel").value  # type: ignore
+
+    @property
+    def sign_r_pos(self) -> float:
+        """Return the sign_r_pos parameter."""
+        return self.get_parameter("sign_r_pos").value  # type: ignore
+
+    @property
+    def sign_sigma_pos_init(self) -> float:
+        """Return the sign_sigma_pos_init parameter."""
+        return self.get_parameter("sign_sigma_pos_init").value  # type: ignore
+
+    @property
+    def sign_sigma_vel_init(self) -> float:
+        """Return the sign_sigma_vel_init parameter."""
+        return self.get_parameter("sign_sigma_vel_init").value  # type: ignore
 
     def object_detection_callback(self, msg: Float32MultiArray):
         """
@@ -199,7 +253,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         Args:
             msg: Float32MultiArray containing detection data
         """
-        if self.debug:
+        if self._debug:
             self.get_logger().info("=" * 60)
             self.get_logger().info("Received OBJECT detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
@@ -207,7 +261,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Parse the detection data
         detections = self.parse_detections(msg)
 
-        if self.debug and detections:
+        if self._debug and detections:
             self.get_logger().info(f"Parsed {len(detections)} object detection(s):")
             for i, det in enumerate(detections):
                 self.get_logger().info(
@@ -219,7 +273,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Update tracker with detections
         confirmed_tracks = self.object_tracker.update(detections)
 
-        if self.debug:
+        if self._debug:
             # Log tracker statistics
             stats = self.object_tracker.get_statistics()
             self.get_logger().info(
@@ -231,9 +285,9 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Publish confirmed tracks
         if confirmed_tracks:
             tracking_msg = self.create_tracking_message(confirmed_tracks)
-            self.object_tracking_publisher.publish(tracking_msg)
+            self.object_tracking_publisher.publish(tracking_msg)  # type: ignore
 
-            if self.debug:
+            if self._debug:
                 self.get_logger().info(
                     f"Published {len(confirmed_tracks)} confirmed object track(s):"
                 )
@@ -244,7 +298,7 @@ class ObjectTrackingNode(rclpy.node.Node):
                         f"vel=({track['velocity']['vx']:.1f}, {track['velocity']['vy']:.1f}), "
                         f"confidence={track['confidence']:.3f}, hits={track['hits']}"
                     )
-        elif self.debug:
+        elif self._debug:
             self.get_logger().info("No confirmed object tracks to publish")
 
     def sign_detection_callback(self, msg: Float32MultiArray):
@@ -254,7 +308,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         Args:
             msg: Float32MultiArray containing detection data
         """
-        if self.debug:
+        if self._debug:
             self.get_logger().info("=" * 60)
             self.get_logger().info("Received SIGN detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
@@ -262,7 +316,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Parse the detection data
         detections = self.parse_detections(msg)
 
-        if self.debug and detections:
+        if self._debug and detections:
             self.get_logger().info(f"Parsed {len(detections)} sign detection(s):")
             for i, det in enumerate(detections):
                 self.get_logger().info(
@@ -274,7 +328,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Update tracker with detections
         confirmed_tracks = self.sign_tracker.update(detections)
 
-        if self.debug:
+        if self._debug:
             # Log tracker statistics
             stats = self.sign_tracker.get_statistics()
             self.get_logger().info(
@@ -286,9 +340,9 @@ class ObjectTrackingNode(rclpy.node.Node):
         # Publish confirmed tracks
         if confirmed_tracks:
             tracking_msg = self.create_tracking_message(confirmed_tracks)
-            self.sign_tracking_publisher.publish(tracking_msg)
+            self.sign_tracking_publisher.publish(tracking_msg)  # type: ignore
 
-            if self.debug:
+            if self._debug:
                 self.get_logger().info(
                     f"Published {len(confirmed_tracks)} confirmed sign track(s):"
                 )
@@ -299,7 +353,7 @@ class ObjectTrackingNode(rclpy.node.Node):
                         f"vel=({track['velocity']['vx']:.1f}, {track['velocity']['vy']:.1f}), "
                         f"confidence={track['confidence']:.3f}, hits={track['hits']}"
                     )
-        elif self.debug:
+        elif self._debug:
             self.get_logger().info("No confirmed sign tracks to publish")
 
     def parse_detections(self, msg: Float32MultiArray):
@@ -324,7 +378,7 @@ class ObjectTrackingNode(rclpy.node.Node):
         data = msg.data
 
         if len(data) == 0:
-            if self.debug:
+            if self._debug:
                 self.get_logger().info("No detections in this frame")
             return []
 
