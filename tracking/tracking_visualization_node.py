@@ -11,9 +11,9 @@ import numpy as np
 import rclpy
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
-from rclpy.node import Node
-from rclpy.qos import QoSProfile
 from sensor_msgs.msg import Image
+from smarty_utils.enums import NodeState
+from smarty_utils.smarty_node import SmartyNode
 from std_msgs.msg import Float32MultiArray
 
 # Import coordinate transformation
@@ -28,16 +28,60 @@ except ImportError:
     COORD_TRANSFORM_AVAILABLE = False
 
 
-class TrackingVisualizationNode(Node):
+class TrackingVisualizationNode(SmartyNode):
     """ROS2 Node for visualizing tracked objects AND signs using PIL."""
 
     def __init__(self):
         """Initialize the TrackingVisualizationNode."""
-        super().__init__("tracking_visualization_node")
-
-        # Load parameters
-        self.load_ros_params()
-
+        super().__init__(
+            "tracking_visualization_node",
+            "tracking",
+            node_parameters={
+                # Subscriber topics
+                "image_subscriber": "/camera/image/undistorted",
+                "object_detection_subscriber": "/object_detection/object",
+                "sign_detection__subscriber": "/object_detection/sign",
+                "object_tracking_subscriber": "/object_tracking/tracked_objects",
+                "sign_tracking_subscriber": "/sign_tracking/tracked_signs",
+                # Publisher topics
+                "debug_image_publisher": "/tracking/debug/image",
+                # Parameters
+                "state": NodeState.ACTIVE.value,
+                "show_velocity": True,
+                "text_size": 12,
+                "debug": False,
+            },
+            subscribed_topics={
+                "image_subscriber": (
+                    Image,
+                    self.image_callback,
+                    1,
+                ),
+                "object_detection_subscriber": (
+                    Float32MultiArray,
+                    self.object_detection_callback,
+                    1,
+                ),
+                "sign_detection__subscriber": (
+                    Float32MultiArray,
+                    self.sign_detection_callback,
+                    1,
+                ),
+                "object_tracking_subscriber": (
+                    Float32MultiArray,
+                    self.object_tracking_callback,
+                    1,
+                ),
+                "sign_tracking_subscriber": (
+                    Float32MultiArray,
+                    self.sign_tracking_callback,
+                    1,
+                ),
+            },
+            published_topics={
+                "debug_image_publisher": (Image, 1),
+            },
+        )
         # Initialize CV bridge
         self.cv_bridge = cv_bridge.CvBridge()
 
@@ -47,9 +91,6 @@ class TrackingVisualizationNode(Node):
         self.latest_sign_detections = []  # For signs
         self.latest_object_tracks = []  # Tracked objects
         self.latest_sign_tracks = []  # Tracked signs
-
-        # Initialize subscribers and publisher
-        self.init_subscribers()
 
         # Statistics
         self.frame_count = 0
@@ -70,18 +111,24 @@ class TrackingVisualizationNode(Node):
         }
 
         self.get_logger().info("TrackingVisualizationNode initialized (PIL-based)")
-        self.get_logger().info(f"Listening to image: {self.image_topic}")
         self.get_logger().info(
-            f"Listening to object detections: {self.object_detection_topic}"
+            f"Listening to image: {self.subscribed_topics['image_subscriber'][0]}"
         )
         self.get_logger().info(
-            f"Listening to sign detections: {self.sign_detection_topic}"
+            f"Listening to object detections: {self.subscribed_topics['object_detection_subscriber'][0]}"
         )
         self.get_logger().info(
-            f"Listening to object tracks: {self.object_tracking_topic}"
+            f"Listening to sign detections: {self.subscribed_topics['sign_detection__subscriber'][0]}"
         )
-        self.get_logger().info(f"Listening to sign tracks: {self.sign_tracking_topic}")
-        self.get_logger().info(f"Publishing to: {self.output_topic}")
+        self.get_logger().info(
+            f"Listening to object tracks: {self.subscribed_topics['object_tracking_subscriber'][0]}"
+        )
+        self.get_logger().info(
+            f"Listening to sign tracks: {self.subscribed_topics['sign_tracking_subscriber'][0]}"
+        )
+        self.get_logger().info(
+            f"Publishing to: {self.published_topics['debug_image_publisher'][0]}"
+        )
 
         # Initialize coordinate transformation
         if COORD_TRANSFORM_AVAILABLE:
@@ -97,71 +144,15 @@ class TrackingVisualizationNode(Node):
             )
             self.coord_transform = None
 
-    def load_ros_params(self):
-        """Get parameters from the ROS parameter server."""
-        self.declare_parameters(
-            namespace="",
-            parameters=[
-                ("image_topic", "/camera/image/undistorted"),
-                ("object_detection_topic", "/object_detection/object"),
-                ("sign_detection_topic", "/object_detection/sign"),
-                ("object_tracking_topic", "/object_tracking/tracked_objects"),
-                ("sign_tracking_topic", "/sign_tracking/tracked_signs"),
-                ("output_topic", "/tracking/debug/image"),
-                ("show_velocity", True),
-                ("text_size", 12),
-            ],
-        )
+    @property
+    def show_velocity(self) -> bool:
+        """Return whether to show velocity on visualization."""
+        return self.get_parameter("show_velocity").value  # type: ignore
 
-        self.image_topic = self.get_parameter("image_topic").value
-        self.object_detection_topic = self.get_parameter("object_detection_topic").value
-        self.sign_detection_topic = self.get_parameter("sign_detection_topic").value
-        self.object_tracking_topic = self.get_parameter("object_tracking_topic").value
-        self.sign_tracking_topic = self.get_parameter("sign_tracking_topic").value
-        self.output_topic = self.get_parameter("output_topic").value
-        self.show_velocity = self.get_parameter("show_velocity").value
-        self.text_size = self.get_parameter("text_size").value
-
-    def init_subscribers(self):
-        """Initialize subscribers for camera image, detections, and tracked objects."""
-        # Subscribe to camera image
-        self.image_subscriber = self.create_subscription(
-            Image, self.image_topic, self.image_callback, 10
-        )
-
-        # Subscribe to object detections (cars, pedestrians)
-        self.object_detection_subscriber = self.create_subscription(
-            Float32MultiArray,
-            self.object_detection_topic,
-            self.object_detection_callback,
-            10,
-        )
-
-        # Subscribe to sign detections
-        self.sign_detection_subscriber = self.create_subscription(
-            Float32MultiArray,
-            self.sign_detection_topic,
-            self.sign_detection_callback,
-            10,
-        )
-
-        # Subscribe to tracked objects
-        self.object_tracking_subscriber = self.create_subscription(
-            Float32MultiArray,
-            self.object_tracking_topic,
-            self.object_tracking_callback,
-            10,
-        )
-
-        # Subscribe to tracked signs
-        self.sign_tracking_subscriber = self.create_subscription(
-            Float32MultiArray, self.sign_tracking_topic, self.sign_tracking_callback, 10
-        )
-
-        # Publisher for annotated image
-        self.image_publisher = self.create_publisher(
-            Image, self.output_topic, QoSProfile(depth=10)
-        )
+    @property
+    def text_size(self) -> int:
+        """Return text size for visualization."""
+        return self.get_parameter("text_size").value  # type: ignore
 
     def image_callback(self, msg: Image):
         """
@@ -566,12 +557,12 @@ class TrackingVisualizationNode(Node):
         if matched_detection is not None:
             # Use detection's pixel coordinates
             xmin, ymin, xmax, ymax = self.detection_to_bbox(
-                matched_detection, self.latest_image.shape
+                matched_detection, self.latest_image.shape  # type: ignore
             )
         else:
             # Estimate from track world coordinates
             xmin, ymin, xmax, ymax = self.world_coords_to_bbox(
-                track, self.latest_image.shape
+                track, self.latest_image.shape  # type: ignore
             )
 
         # Get color based on confidence
@@ -685,7 +676,7 @@ class TrackingVisualizationNode(Node):
             result_image_bgr = cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR)
 
             output_msg = self.cv_bridge.cv2_to_imgmsg(result_image_bgr, encoding="bgr8")
-            self.image_publisher.publish(output_msg)
+            self.debug_image_publisher.publish(output_msg)  # type: ignore
             self.frame_count += 1
 
             if self.frame_count % 30 == 0:

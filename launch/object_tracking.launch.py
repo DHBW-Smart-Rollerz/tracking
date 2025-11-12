@@ -11,14 +11,14 @@ from launch import LaunchDescription
 def generate_launch_description():
     """Generate the launch description for the object tracking node."""
     # Get the package directory
-    package_dir = get_package_share_directory("ros2_example_package")
+    package_dir = get_package_share_directory("tracking")
 
     # Path to the config file
     config_file = os.path.join(package_dir, "config", "tracking_params.yaml")
 
     # Create the tracking node
     tracking_node = Node(
-        package="ros2_example_package",
+        package="tracking",
         executable="object_tracking_node",
         name="object_tracking_node",
         output="screen",
