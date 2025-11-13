@@ -28,19 +28,14 @@ class KalmanFilter:
         - Slide 137: Complete algorithm summary
     """
 
-    def __init__(self, dt: float = 0.1):
+    def __init__(self):
         """
         Initialize the Kalman Filter.
-
-        Args:
-            dt: Time step between measurements in seconds (default: 0.1s = 10Hz)
+        
+        Note: dt is now passed dynamically to predict() for accurate timing.
         """
-        self.dt = dt
         self.state_dim = 4  # [x, y, vx, vy]
         self.measurement_dim = 2  # [x, y]
-
-        # Create state transition matrix F (Slide 125, extended to 2D)
-        self.F = self._create_state_transition_matrix()
 
         # Create measurement matrix H (Slide 136)
         # H maps state to measurement: z = H @ s
@@ -55,7 +50,7 @@ class KalmanFilter:
         # Identity matrix for update step
         self.I = np.eye(self.state_dim, dtype=np.float32)
 
-    def _create_state_transition_matrix(self) -> np.ndarray:
+    def _create_state_transition_matrix(self, dt: float) -> np.ndarray:
         """
         Create the state transition matrix F for constant velocity model.
 
@@ -65,13 +60,16 @@ class KalmanFilter:
             vx_new = vx_old (constant velocity)
             vy_new = vy_old (constant velocity)
 
+        Args:
+            dt: Time step in seconds
+
         Returns:
             F: 4x4 state transition matrix
         """
         F = np.array(
             [
-                [1, 0, self.dt, 0],  # x_new = x + vx*dt
-                [0, 1, 0, self.dt],  # y_new = y + vy*dt
+                [1, 0, dt, 0],  # x_new = x + vx*dt
+                [0, 1, 0, dt],  # y_new = y + vy*dt
                 [0, 0, 1, 0],  # vx stays constant
                 [0, 0, 0, 1],  # vy stays constant
             ],
@@ -80,7 +78,7 @@ class KalmanFilter:
         return F
 
     def predict(
-        self, s: np.ndarray, Sigma: np.ndarray, Q: np.ndarray
+        self, s: np.ndarray, Sigma: np.ndarray, Q: np.ndarray, dt: float
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Prediction step of the Kalman Filter.
@@ -93,18 +91,22 @@ class KalmanFilter:
             s: Current state vector [x, y, vx, vy] (4,)
             Sigma: Current state covariance matrix (4x4)
             Q: Process noise covariance matrix (4x4)
+            dt: Time step in seconds (time since last update)
 
         Returns:
             Tuple of:
                 - s_predict: Predicted state vector (4,)
                 - Sigma_predict: Predicted covariance matrix (4x4)
         """
+        # Create state transition matrix F with current dt
+        F = self._create_state_transition_matrix(dt)
+        
         # Predict state (Slide 137: s_p = F·s_t)
-        s_predict = self.F @ s
+        s_predict = F @ s
 
         # Predict covariance (Slide 137: Σ_p = F·Σ_t·F^T + Q)
         # Note: Adding process noise Q accounts for model uncertainty
-        Sigma_predict = self.F @ Sigma @ self.F.T + Q
+        Sigma_predict = F @ Sigma @ F.T + Q
 
         return s_predict, Sigma_predict
 
@@ -253,12 +255,12 @@ if __name__ == "__main__":
     print("Kalman Filter Test")
     print("=" * 60)
 
-    # Initialize filter
+    # Initialize filter (no dt parameter anymore)
     dt = 0.1  # 10 Hz
-    kf = KalmanFilter(dt=dt)
+    kf = KalmanFilter()
 
     print(f"\nState transition matrix F (dt={dt}s):")
-    print(kf.F)
+    print(kf._create_state_transition_matrix(dt))
 
     print(f"\nMeasurement matrix H:")
     print(kf.H)
@@ -288,7 +290,7 @@ if __name__ == "__main__":
     # Simulate 5 time steps
     for i in range(1, 6):
         # Predict
-        s_pred, Sigma_pred = kf.predict(s, Sigma, Q)
+        s_pred, Sigma_pred = kf.predict(s, Sigma, Q, dt)
 
         print(f"\nStep {i} - After Prediction:")
         print(f"  Position: ({s_pred[0]:.1f}, {s_pred[1]:.1f}) mm")

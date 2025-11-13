@@ -12,6 +12,29 @@ import numpy as np
 from .kalman_filter import KalmanFilter
 
 
+# Global track ID counter (module-level, shared across all instances)
+_global_track_id_counter = 0
+
+
+def get_next_track_id() -> int:
+    """
+    Get the next unique track ID.
+    
+    Returns:
+        Unique track ID
+    """
+    global _global_track_id_counter
+    track_id = _global_track_id_counter
+    _global_track_id_counter += 1
+    return track_id
+
+
+def reset_track_id_counter() -> None:
+    """Reset the global track ID counter (use with caution!)."""
+    global _global_track_id_counter
+    _global_track_id_counter = 0
+
+
 class Track:
     """
     Represents a single tracked object with Kalman Filter state estimation.
@@ -23,13 +46,9 @@ class Track:
     - Metadata: age, hits, time_since_update, class_id, score
     """
 
-    # Class variable for assigning unique track IDs
-    _next_id = 0
-
     def __init__(
         self,
         detection: Dict,
-        dt: float = 0.1,
         q_pos: float = 50.0,
         q_vel: float = 100.0,
         r_pos: float = 100.0,
@@ -45,24 +64,24 @@ class Track:
                 - 'class_id': int
                 - 'score': float (0-1)
                 - 'width': float (optional)
-            dt: Time step between frames in seconds (default: 0.1s)
             q_pos: Process noise std dev for position [mm] (default: 50)
             q_vel: Process noise std dev for velocity [mm/s] (default: 100)
             r_pos: Measurement noise std dev for position [mm] (default: 100)
             sigma_pos_init: Initial position uncertainty [mm] (default: 500)
             sigma_vel_init: Initial velocity uncertainty [mm/s] (default: 1000)
+            
+        Note: dt is now passed dynamically to predict() for accurate timing.
         """
-        # Assign unique track ID
-        self.track_id = Track._next_id
-        Track._next_id += 1
+        # Assign unique track ID using global counter
+        self.track_id = get_next_track_id()
 
         # Store object class and detection score
         self.class_id = detection["class_id"]
         self.score = detection["score"]
         self.width = detection.get("width", 0.0)
 
-        # Initialize Kalman Filter
-        self.kf = KalmanFilter(dt=dt)
+        # Initialize Kalman Filter (no dt parameter anymore)
+        self.kf = KalmanFilter()
 
         # Create noise matrices
         self.Q = self.kf.create_process_noise_matrix(q_pos=q_pos, q_vel=q_vel)
@@ -87,15 +106,18 @@ class Track:
         # Store original detection for reference
         self.last_detection = detection
 
-    def predict(self) -> None:
+    def predict(self, dt: float) -> None:
         """
         Predict the next state using the Kalman Filter.
 
         This should be called once per frame before attempting to match detections.
         Updates self.state and self.covariance with predictions.
+        
+        Args:
+            dt: Time step in seconds (time since last update)
         """
         self.state, self.covariance = self.kf.predict(
-            s=self.state, Sigma=self.covariance, Q=self.Q
+            s=self.state, Sigma=self.covariance, Q=self.Q, dt=dt
         )
 
         # Increment age (track exists for one more frame)
@@ -317,7 +339,7 @@ if __name__ == "__main__":
     print(f"  Class: {detection1['class_id']}, Score: {detection1['score']}")
 
     # Create track
-    track = Track(detection1, dt=0.1)
+    track = Track(detection1)
 
     print(f"\nTrack created: {track}")
     print(f"  Initial state: {track.state}")
@@ -360,8 +382,8 @@ if __name__ == "__main__":
     for i, det in enumerate(detections, start=1):
         print(f"\n--- Frame {i} ---")
 
-        # Predict
-        track.predict()
+        # Predict (with dt=0.1 for test)
+        track.predict(dt=0.1)
         x_pred, y_pred = track.get_position()
         print(f"After Predict: pos=({x_pred:.1f}, {y_pred:.1f})")
 

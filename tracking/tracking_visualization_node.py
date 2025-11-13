@@ -173,10 +173,9 @@ class TrackingVisualizationNode(SmartyNode):
 
             self.latest_image = image
 
-            # Visualize if we have image and any tracks
-            if self.latest_image is not None and (
-                len(self.latest_object_tracks) > 0 or len(self.latest_sign_tracks) > 0
-            ):
+            # Always visualize on new image (even if no tracks)
+            # This ensures bounding boxes disappear when tracks are deleted
+            if self.latest_image is not None:
                 self.visualize_and_publish()
 
         except Exception as e:
@@ -207,6 +206,7 @@ class TrackingVisualizationNode(SmartyNode):
         Args:
             msg: Float32MultiArray with tracking data
         """
+        # Always update the list (including clearing it if empty)
         self.latest_object_tracks = self.parse_tracks(msg)
 
     def sign_tracking_callback(self, msg: Float32MultiArray):
@@ -216,6 +216,7 @@ class TrackingVisualizationNode(SmartyNode):
         Args:
             msg: Float32MultiArray with tracking data
         """
+        # Always update the list (including clearing it if empty)
         self.latest_sign_tracks = self.parse_tracks(msg)
 
     def parse_detections(self, msg: Float32MultiArray):
@@ -358,13 +359,7 @@ class TrackingVisualizationNode(SmartyNode):
                 ymin = center_y - height_pixels // 2
                 ymax = center_y + height_pixels // 2
 
-                # Clamp to image bounds
-                height, width = image_shape[:2]
-                xmin = max(0, min(width - 1, xmin))
-                ymin = max(0, min(height - 1, ymin))
-                xmax = max(0, min(width - 1, xmax))
-                ymax = max(0, min(height - 1, ymax))
-
+                # Don't clamp - allow boxes to extend beyond image bounds
                 return xmin, ymin, xmax, ymax
 
             except Exception as e:
@@ -406,12 +401,7 @@ class TrackingVisualizationNode(SmartyNode):
         ymin = py - box_height // 2
         ymax = py + box_height // 2
 
-        # Clamp to image bounds
-        xmin = max(0, min(width - 1, xmin))
-        ymin = max(0, min(height - 1, ymin))
-        xmax = max(0, min(width - 1, xmax))
-        ymax = max(0, min(height - 1, ymax))
-
+        # Don't clamp - allow boxes to extend beyond image bounds
         return xmin, ymin, xmax, ymax
 
     def detection_to_bbox(self, detection, image_shape):
@@ -463,13 +453,7 @@ class TrackingVisualizationNode(SmartyNode):
                 ymax = int(max(bl_pixel[1], br_pixel[1]))
                 ymin = ymax - height
 
-                # Clamp to image bounds
-                height, width_img = image_shape[:2]
-                xmin = max(0, min(width_img - 1, xmin))
-                ymin = max(0, min(height - 1, ymin))
-                xmax = max(0, min(width_img - 1, xmax))
-                ymax = max(0, min(height - 1, ymax))
-
+                # Don't clamp - allow boxes to extend beyond image bounds
                 return xmin, ymin, xmax, ymax
 
             except Exception as e:
@@ -512,12 +496,7 @@ class TrackingVisualizationNode(SmartyNode):
         ymin = min(bl_y, br_y) - int((xmax - xmin) * 1.2)
         ymax = max(bl_y, br_y)
 
-        # Clamp to image bounds
-        xmin = max(0, min(width - 1, xmin))
-        ymin = max(0, min(height - 1, ymin))
-        xmax = max(0, min(width - 1, xmax))
-        ymax = max(0, min(height - 1, ymax))
-
+        # Don't clamp - allow boxes to extend beyond image bounds
         return xmin, ymin, xmax, ymax
 
     def get_color_from_confidence(self, confidence):
@@ -564,6 +543,14 @@ class TrackingVisualizationNode(SmartyNode):
             xmin, ymin, xmax, ymax = self.world_coords_to_bbox(
                 track, self.latest_image.shape  # type: ignore
             )
+
+        # Skip only if track is COMPLETELY outside image bounds (no overlap at all)
+        height, width = self.latest_image.shape[:2]  # type: ignore
+        if xmax < 0 or xmin >= width or ymax < 0 or ymin >= height:
+            return  # Track is completely outside image, don't draw
+        
+        # Allow boxes that extend beyond image bounds (partial objects)
+        # PIL will clip the drawing automatically
 
         # Get color based on confidence
         color = self.get_color_from_confidence(track["confidence"])

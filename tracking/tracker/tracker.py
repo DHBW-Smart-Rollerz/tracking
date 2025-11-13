@@ -9,7 +9,7 @@ from typing import Dict, List, Set, Tuple
 
 import numpy as np
 
-from .track import Track
+from .track import Track, reset_track_id_counter
 
 
 class MultiObjectTracker:
@@ -25,7 +25,6 @@ class MultiObjectTracker:
 
     def __init__(
         self,
-        dt: float = 0.1,
         max_age: int = 5,
         min_hits: int = 3,
         min_age: int = 3,
@@ -42,7 +41,6 @@ class MultiObjectTracker:
         Initialize the Multi-Object Tracker.
 
         Args:
-            dt: Time step between frames in seconds (default: 0.1s = 10Hz)
             max_age: Maximum frames without update before deleting track (default: 5)
             min_hits: Minimum hits for track confirmation (default: 3)
             min_age: Minimum age for track confirmation (default: 3)
@@ -55,6 +53,8 @@ class MultiObjectTracker:
             r_pos: Measurement noise std dev for position [mm] (default: 100)
             sigma_pos_init: Initial position uncertainty [mm] (default: 500)
             sigma_vel_init: Initial velocity uncertainty [mm/s] (default: 1000)
+            
+        Note: dt is now passed dynamically to update() based on actual timestamps.
         """
         # Track management parameters
         self.max_age = max_age
@@ -65,7 +65,6 @@ class MultiObjectTracker:
         self.max_y = max_y
 
         # Kalman filter parameters
-        self.dt = dt
         self.q_pos = q_pos
         self.q_vel = q_vel
         self.r_pos = r_pos
@@ -80,7 +79,7 @@ class MultiObjectTracker:
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
 
-    def update(self, detections: List[Dict]) -> List[Dict]:
+    def update(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
         """
         Main tracking update function. Call this once per frame with new detections.
 
@@ -98,6 +97,8 @@ class MultiObjectTracker:
                 - 'class_id': int
                 - 'score': float (0-1)
                 - 'width': float (optional)
+            dt: Time step in seconds since last update (default: 0.1s)
+                Should be calculated from actual timestamps for accuracy.
 
         Returns:
             List of confirmed track dictionaries (from track.to_dict())
@@ -105,7 +106,7 @@ class MultiObjectTracker:
         self.frame_count += 1
 
         # Step 1: Predict all existing tracks
-        self._predict_tracks()
+        self._predict_tracks(dt)
 
         # Step 2: Associate detections to tracks
         (
@@ -133,10 +134,15 @@ class MultiObjectTracker:
         # Step 7: Return only confirmed tracks
         return self.get_confirmed_tracks()
 
-    def _predict_tracks(self) -> None:
-        """Predict all active tracks to the current frame."""
+    def _predict_tracks(self, dt: float) -> None:
+        """
+        Predict all active tracks to the current frame.
+        
+        Args:
+            dt: Time step in seconds
+        """
         for track in self.tracks:
-            track.predict()
+            track.predict(dt)
 
     def _associate(
         self, detections: List[Dict]
@@ -281,7 +287,6 @@ class MultiObjectTracker:
         """
         new_track = Track(
             detection=detection,
-            dt=self.dt,
             q_pos=self.q_pos,
             q_vel=self.q_vel,
             r_pos=self.r_pos,
@@ -363,8 +368,8 @@ class MultiObjectTracker:
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
-        # Reset track ID counter
-        Track._next_id = 0
+        # Reset global track ID counter
+        reset_track_id_counter()
 
 
 if __name__ == "__main__":
@@ -377,14 +382,13 @@ if __name__ == "__main__":
 
     # Create tracker
     tracker = MultiObjectTracker(
-        dt=0.1,
         max_age=5,
         min_hits=3,
         max_distance=500.0,  # Use larger threshold for test (mm)
     )
 
     print(f"\nTracker initialized with parameters:")
-    print(f"  dt={tracker.dt}s, max_age={tracker.max_age}, min_hits={tracker.min_hits}")
+    print(f"  max_age={tracker.max_age}, min_hits={tracker.min_hits}")
 
     # Simulate a scenario with 2 objects moving
     print(f"\n" + "=" * 60)
@@ -488,8 +492,8 @@ if __name__ == "__main__":
                 f"  Det {i}: class={det['class_id']}, pos=({det['center']['x']:.0f}, {det['center']['y']:.0f})"
             )
 
-        # Update tracker
-        confirmed_tracks = tracker.update(detections)
+        # Update tracker (with dt=0.1 for test)
+        confirmed_tracks = tracker.update(detections, dt=0.1)
 
         # Show all tracks (including unconfirmed)
         all_tracks = tracker.get_all_tracks()

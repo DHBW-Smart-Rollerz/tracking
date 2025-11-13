@@ -36,14 +36,14 @@ class ObjectTrackingNode(SmartyNode):
                 "state": NodeState.ACTIVE.value,
                 "debug": False,
                 # Common parameters
-                "dt": 0.1,  # Time step in seconds (10 Hz)
+                "dt": 0.1,  # Time step in seconds (10 Hz - only used as fallback)
                 "max_x": 5000.0,  # Max valid x position (mm)
                 "max_y": 3000.0,  # Max valid y position (mm)
                 # Object tracker parameters (moving objects)
                 "object_max_age": 5,  # Max frames without update
                 "object_min_hits": 3,  # Min hits for confirmation
                 "object_min_age": 3,  # Min age for confirmation
-                "object_max_distance": 500.0,  # Max Mahalanobis distance (mm)
+                "object_max_distance": 9.21,  # Max Mahalanobis distance (chi-squared, 99% confidence for 2D)
                 "object_q_pos": 50.0,  # Process noise: position (mm)
                 "object_q_vel": 100.0,  # Process noise: velocity (mm/s)
                 "object_r_pos": 100.0,  # Measurement noise: position (mm)
@@ -53,7 +53,7 @@ class ObjectTrackingNode(SmartyNode):
                 "sign_max_age": 10,  # Longer for signs (don't disappear)
                 "sign_min_hits": 2,  # Faster confirmation for signs
                 "sign_min_age": 2,  # Shorter confirmation time
-                "sign_max_distance": 500.0,  # Max Mahalanobis distance (mm)
+                "sign_max_distance": 9.21,  # Max Mahalanobis distance (chi-squared, 99% confidence for 2D)
                 "sign_q_pos": 25.0,  # Lower process noise (static)
                 "sign_q_vel": 50.0,  # Lower velocity noise
                 "sign_r_pos": 100.0,  # Measurement noise: position (mm)
@@ -82,6 +82,10 @@ class ObjectTrackingNode(SmartyNode):
         self.object_tracker = self._create_object_tracker()
         self.sign_tracker = self._create_sign_tracker()
 
+        # Timestamp tracking for dynamic dt calculation
+        self.last_object_time = None
+        self.last_sign_time = None
+
         self.get_logger().info("ObjectTrackingNode initialized with dual trackers")
         self.get_logger().info("Subscribed topics:")
         for key, (msg_type, callback, queue_size) in self.subscribed_topics.items():
@@ -100,7 +104,6 @@ class ObjectTrackingNode(SmartyNode):
             MultiObjectTracker instance for objects
         """
         return MultiObjectTracker(
-            dt=self.dt,
             max_age=self.object_max_age,
             min_hits=self.object_min_hits,
             min_age=self.object_min_age,
@@ -127,7 +130,6 @@ class ObjectTrackingNode(SmartyNode):
             MultiObjectTracker instance for signs
         """
         return MultiObjectTracker(
-            dt=self.dt,
             max_age=self.sign_max_age,
             min_hits=self.sign_min_hits,
             min_age=self.sign_min_age,
@@ -253,10 +255,23 @@ class ObjectTrackingNode(SmartyNode):
         Args:
             msg: Float32MultiArray containing detection data
         """
+        # Calculate dynamic dt based on actual timestamps
+        current_time = self.get_clock().now()
+        if self.last_object_time is not None:
+            dt = (current_time - self.last_object_time).nanoseconds * 1e-9
+            # Clamp dt to reasonable range (10ms to 1s)
+            dt = max(0.01, min(1.0, dt))
+        else:
+            # First frame: use default dt
+            dt = self.dt
+        
+        self.last_object_time = current_time
+
         if self._debug:
             self.get_logger().info("=" * 60)
             self.get_logger().info("Received OBJECT detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
+            self.get_logger().info(f"Time step dt: {dt:.4f}s ({1/dt:.1f} Hz)")
 
         # Parse the detection data
         detections = self.parse_detections(msg)
@@ -270,8 +285,8 @@ class ObjectTrackingNode(SmartyNode):
                     f"score={det['score']:.3f}"
                 )
 
-        # Update tracker with detections
-        confirmed_tracks = self.object_tracker.update(detections)
+        # Update tracker with detections and dynamic dt
+        confirmed_tracks = self.object_tracker.update(detections, dt=dt)
 
         if self._debug:
             # Log tracker statistics
@@ -308,10 +323,23 @@ class ObjectTrackingNode(SmartyNode):
         Args:
             msg: Float32MultiArray containing detection data
         """
+        # Calculate dynamic dt based on actual timestamps
+        current_time = self.get_clock().now()
+        if self.last_sign_time is not None:
+            dt = (current_time - self.last_sign_time).nanoseconds * 1e-9
+            # Clamp dt to reasonable range (10ms to 1s)
+            dt = max(0.01, min(1.0, dt))
+        else:
+            # First frame: use default dt
+            dt = self.dt
+        
+        self.last_sign_time = current_time
+
         if self._debug:
             self.get_logger().info("=" * 60)
             self.get_logger().info("Received SIGN detection message!")
             self.get_logger().info(f"Data length: {len(msg.data)}")
+            self.get_logger().info(f"Time step dt: {dt:.4f}s ({1/dt:.1f} Hz)")
 
         # Parse the detection data
         detections = self.parse_detections(msg)
@@ -325,8 +353,8 @@ class ObjectTrackingNode(SmartyNode):
                     f"score={det['score']:.3f}"
                 )
 
-        # Update tracker with detections
-        confirmed_tracks = self.sign_tracker.update(detections)
+        # Update tracker with detections and dynamic dt
+        confirmed_tracks = self.sign_tracker.update(detections, dt=dt)
 
         if self._debug:
             # Log tracker statistics
