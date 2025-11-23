@@ -11,14 +11,21 @@ import numpy as np
 
 from .kalman_filter import KalmanFilter
 
+from collections import defaultdict
 
-# Global track ID counter (module-level, shared across all instances)
+
+# DEPRECATED: Global track ID counter (kept for backwards compatibility)
+# New code should pass track_id directly to Track.__init__()
+# Each MultiObjectTracker now maintains its own instance-level counter
 _global_track_id_counter = 0
 
 
 def get_next_track_id() -> int:
     """
-    Get the next unique track ID.
+    DEPRECATED: Get the next unique track ID from global counter.
+    
+    This function is kept for backwards compatibility but should not be used
+    in new code. MultiObjectTracker now manages IDs internally.
     
     Returns:
         Unique track ID
@@ -30,7 +37,12 @@ def get_next_track_id() -> int:
 
 
 def reset_track_id_counter() -> None:
-    """Reset the global track ID counter (use with caution!)."""
+    """
+    DEPRECATED: Reset the global track ID counter.
+    
+    This function is kept for backwards compatibility but should not be used
+    in new code. Use MultiObjectTracker.reset() instead.
+    """
     global _global_track_id_counter
     _global_track_id_counter = 0
 
@@ -49,6 +61,7 @@ class Track:
     def __init__(
         self,
         detection: Dict,
+        track_id: int,
         q_pos: float = 50.0,
         q_vel: float = 100.0,
         r_pos: float = 100.0,
@@ -64,6 +77,7 @@ class Track:
                 - 'class_id': int
                 - 'score': float (0-1)
                 - 'width': float (optional)
+            track_id: Unique track ID (provided by tracker)
             q_pos: Process noise std dev for position [mm] (default: 50)
             q_vel: Process noise std dev for velocity [mm/s] (default: 100)
             r_pos: Measurement noise std dev for position [mm] (default: 100)
@@ -72,8 +86,8 @@ class Track:
             
         Note: dt is now passed dynamically to predict() for accurate timing.
         """
-        # Assign unique track ID using global counter
-        self.track_id = get_next_track_id()
+        # Assign track ID from tracker
+        self.track_id = track_id
 
         # Store object class and detection score
         self.class_id = detection["class_id"]
@@ -105,6 +119,11 @@ class Track:
 
         # Store original detection for reference
         self.last_detection = detection
+
+        # Class history for majority voting
+        self.class_history = defaultdict(int)
+        self.class_history[detection["class_id"]] += 1
+        self.class_id = detection["class_id"]
 
     def predict(self, dt: float) -> None:
         """
@@ -151,10 +170,17 @@ class Track:
         self.hits += 1
         self.time_since_update = 0
 
-        # Update class_id and score (could also use moving average)
-        self.class_id = detection["class_id"]
+        # REPLACE strict assignment with Voting Logic
+        detected_class = detection["class_id"]
+        self.class_history[detected_class] += 1
+        
+        # The class_id is the one with the highest count in history
+        # (This prevents a single flickering frame from changing the object type)
+        self.class_id = max(self.class_history, key=self.class_history.get)
+        
         self.score = detection["score"]
         self.width = detection.get("width", self.width)
+        self.last_detection = detection
 
         # Store detection
         self.last_detection = detection
@@ -338,8 +364,8 @@ if __name__ == "__main__":
     print(f"  Position: ({detection1['center']['x']}, {detection1['center']['y']})")
     print(f"  Class: {detection1['class_id']}, Score: {detection1['score']}")
 
-    # Create track
-    track = Track(detection1)
+    # Create track (manually specify ID for test)
+    track = Track(detection1, track_id=0)
 
     print(f"\nTrack created: {track}")
     print(f"  Initial state: {track.state}")

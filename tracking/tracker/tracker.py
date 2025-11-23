@@ -9,7 +9,7 @@ from typing import Dict, List, Set, Tuple
 
 import numpy as np
 
-from .track import Track, reset_track_id_counter
+from .track import Track
 
 
 class MultiObjectTracker:
@@ -36,6 +36,7 @@ class MultiObjectTracker:
         r_pos: float = 100.0,
         sigma_pos_init: float = 500.0,
         sigma_vel_init: float = 1000.0,
+        id_offset: int = 0,
     ):
         """
         Initialize the Multi-Object Tracker.
@@ -53,6 +54,7 @@ class MultiObjectTracker:
             r_pos: Measurement noise std dev for position [mm] (default: 100)
             sigma_pos_init: Initial position uncertainty [mm] (default: 500)
             sigma_vel_init: Initial velocity uncertainty [mm/s] (default: 1000)
+            id_offset: Offset for track IDs to avoid conflicts between trackers (default: 0)
             
         Note: dt is now passed dynamically to update() based on actual timestamps.
         """
@@ -71,6 +73,9 @@ class MultiObjectTracker:
         self.sigma_pos_init = sigma_pos_init
         self.sigma_vel_init = sigma_vel_init
 
+        # Instance-level track ID counter (prevents ID conflicts between trackers)
+        self._next_track_id = id_offset
+        
         # List of active tracks
         self.tracks: List[Track] = []
 
@@ -78,6 +83,9 @@ class MultiObjectTracker:
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
+        
+        self._initial_id_offset = id_offset  # <--- Store this
+        self._next_track_id = id_offset
 
     def update(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
         """
@@ -243,6 +251,10 @@ class MultiObjectTracker:
         num_detections = len(detections)
 
         distance_matrix = np.zeros((num_tracks, num_detections), dtype=np.float32)
+        
+        # HARD LIMIT: e.g., 1.0 meters (1000mm)
+        # No object jumps 1 meter in 0.1s unless your velocity model is very wrong
+        MAX_EUCLIDEAN_DISTANCE = 1000.0
 
         for i, track in enumerate(self.tracks):
             # Get predicted measurement and innovation covariance
@@ -256,6 +268,13 @@ class MultiObjectTracker:
 
             # Compute distance to each detection
             for j, detection in enumerate(detections):
+                # ADD THIS: Hard Gating on Class ID
+                # If the detection class is different from track class, set distance to Infinity
+                # (Unless you want to allow class switching, but we just established that causes bugs)
+                
+                if track.class_id != detection["class_id"]:
+                    distance_matrix[i, j] = np.inf
+                    continue
                 # Measurement
                 z = np.array(
                     [detection["center"]["x"], detection["center"]["y"]],
@@ -264,7 +283,16 @@ class MultiObjectTracker:
 
                 # Innovation (residual)
                 y = z - z_pred
+                
+                # 1. Calculate simple Euclidean distance
+                euclidean_dist = np.linalg.norm(y)
+                
+                # 2. THE FIX: Immediate rejection based on physical distance
+                if euclidean_dist > MAX_EUCLIDEAN_DISTANCE:
+                    distance_matrix[i, j] = np.inf
+                    continue
 
+                # 3. If it passes physical check, do the smart Mahalanobis math
                 # Mahalanobis distance: d² = yᵀ S⁻¹ y
                 # We use d (not d²) for easier interpretation
                 try:
@@ -285,8 +313,13 @@ class MultiObjectTracker:
         Args:
             detection: Detection dictionary
         """
+        # Get next unique ID from this tracker's counter
+        track_id = self._next_track_id
+        self._next_track_id += 1
+        
         new_track = Track(
             detection=detection,
+            track_id=track_id,
             q_pos=self.q_pos,
             q_vel=self.q_vel,
             r_pos=self.r_pos,
@@ -362,14 +395,23 @@ class MultiObjectTracker:
             "total_deleted": self.total_tracks_deleted,
         }
 
-    def reset(self) -> None:
-        """Reset the tracker (delete all tracks and reset statistics)."""
+    def reset(self, reset_id_counter: bool = True) -> None:
+        """
+        Reset the tracker (delete all tracks and reset statistics).
+        
+        Args:
+            reset_id_counter: If True, reset the ID counter to id_offset (default: True)
+                             Set to False if you want to preserve continuous ID numbering
+        """
         self.tracks = []
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
-        # Reset global track ID counter
-        reset_track_id_counter()
+        
+        # Reset instance-level ID counter (not global!)
+        if reset_id_counter:
+            # Reset to initial offset (preserves separation between trackers)
+            self._next_track_id = self._initial_id_offset
 
 
 if __name__ == "__main__":
@@ -385,6 +427,7 @@ if __name__ == "__main__":
         max_age=5,
         min_hits=3,
         max_distance=500.0,  # Use larger threshold for test (mm)
+        id_offset=0,  # Start IDs from 0
     )
 
     print(f"\nTracker initialized with parameters:")

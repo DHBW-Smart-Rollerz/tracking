@@ -92,6 +92,11 @@ class TrackingVisualizationNode(SmartyNode):
         self.latest_object_tracks = []  # Tracked objects
         self.latest_sign_tracks = []  # Tracked signs
 
+        # Track timeout handling
+        self.last_object_track_time = None
+        self.last_sign_track_time = None
+        self.track_timeout_sec = 0.5  # Clear tracks if no message for 0.5 seconds
+
         # Statistics
         self.frame_count = 0
 
@@ -208,6 +213,7 @@ class TrackingVisualizationNode(SmartyNode):
         """
         # Always update the list (including clearing it if empty)
         self.latest_object_tracks = self.parse_tracks(msg)
+        self.last_object_track_time = self.get_clock().now()
 
     def sign_tracking_callback(self, msg: Float32MultiArray):
         """
@@ -218,6 +224,7 @@ class TrackingVisualizationNode(SmartyNode):
         """
         # Always update the list (including clearing it if empty)
         self.latest_sign_tracks = self.parse_tracks(msg)
+        self.last_sign_track_time = self.get_clock().now()
 
     def parse_detections(self, msg: Float32MultiArray):
         """
@@ -517,8 +524,33 @@ class TrackingVisualizationNode(SmartyNode):
             return "orange"
         else:
             return "red"
+        
+    def world_to_pixel(self, x_world, y_world):
+        """
+        Convert a single world point (x, y) to pixel coordinates (u, v).
+        """
+        # 1. Try CoordinateTransform
+        if self.coord_transform is not None:
+            try:
+                point = np.array([[x_world, y_world, 0]])
+                pixel = self.coord_transform.world_to_camera(
+                    point, input_unit=Unit.MILLIMETERS
+                )[0]
+                return int(pixel[0]), int(pixel[1])
+            except Exception:
+                pass  # Fallback if transform fails
 
-    def draw_track(self, draw, track, detections, is_sign, font_large, font_normal):
+        # 2. Fallback (Same logic as _fallback_world_to_bbox)
+        height, width = self.latest_image.shape[:2]
+        scale = 0.08
+        center_x = width // 2
+        center_y = height - 80
+        
+        px = int(center_x + y_world * scale)
+        py = int(center_y - x_world * scale)
+        return px, py
+
+    def draw_track(self, draw, track, detections, is_sign, font_large, font_normal, coord_offset=0):
         """
         Draw a single tracked object on the image.
 
@@ -529,6 +561,7 @@ class TrackingVisualizationNode(SmartyNode):
             is_sign: Boolean, True if this is a sign track
             font_large: Large font for track ID
             font_normal: Normal font for other text
+            coord_offset: Pixel offset to apply to all coordinates (for expanded canvas)
         """
         # Try to match with detection for better pixel coordinates
         matched_detection = self.match_track_to_detection(track, detections)
@@ -544,37 +577,25 @@ class TrackingVisualizationNode(SmartyNode):
                 track, self.latest_image.shape  # type: ignore
             )
 
-        # Skip only if track is COMPLETELY outside image bounds (no overlap at all)
-        height, width = self.latest_image.shape[:2]  # type: ignore
-        if xmax < 0 or xmin >= width or ymax < 0 or ymin >= height:
-            return  # Track is completely outside image, don't draw
-        
-        # Allow boxes that extend beyond image bounds (partial objects)
-        # PIL will clip the drawing automatically
+        # Apply coordinate offset for expanded canvas
+        xmin += coord_offset
+        xmax += coord_offset
+        ymin += coord_offset
+        ymax += coord_offset
 
         # Get color based on confidence
         color = self.get_color_from_confidence(track["confidence"])
 
-        # Use different box style for signs vs objects
+        # Draw bounding box - simple like Object Detection!
+        # Signs: double outline for distinction
+        # Objects: single outline
         if is_sign:
-            # Signs: dashed line style (simulated with multiple short lines)
-            line_width = 2
-            for x in range(xmin, xmax, 10):
-                draw.line(
-                    [(x, ymin), (min(x + 5, xmax), ymin)], fill=color, width=line_width
-                )
-                draw.line(
-                    [(x, ymax), (min(x + 5, xmax), ymax)], fill=color, width=line_width
-                )
-            for y in range(ymin, ymax, 10):
-                draw.line(
-                    [(xmin, y), (xmin, min(y + 5, ymax))], fill=color, width=line_width
-                )
-                draw.line(
-                    [(xmax, y), (xmax, min(y + 5, ymax))], fill=color, width=line_width
-                )
+            # Draw outer box
+            draw.rectangle([(xmin, ymin), (xmax, ymax)], outline=color, width=2)
+            # Draw inner box for double-outline effect
+            draw.rectangle([(xmin+3, ymin+3), (xmax-3, ymax-3)], outline=color, width=1)
         else:
-            # Objects: solid box
+            # Objects: solid single box
             draw.rectangle([(xmin, ymin), (xmax, ymax)], outline=color, width=3)
 
         # Draw Track ID (LARGE and prominent)
@@ -597,14 +618,70 @@ class TrackingVisualizationNode(SmartyNode):
                 vel_text = f"{int(speed)} mm/s"
                 draw.text((xmin + 5, ymin + 55), vel_text, fill=color, font=font_normal)
 
+        # --- NEW: Velocity Vector Visualization ---
+        if self.show_velocity and not is_sign:
+            # 1. Get start point (Current Track Position)
+            # We use the track state, NOT the detection, because we want to see the Filter's belief
+            cx, cy = self.world_to_pixel(track["x"], track["y"])
+            
+            # 2. Get end point (Projected Position 1 second in the future)
+            # Scaling factor: How long the arrow should look (1.0 = 1 second of movement)
+            arrow_scale = 1.0 
+            fx, fy = self.world_to_pixel(
+                track["x"] + track["vx"] * arrow_scale, 
+                track["y"] + track["vy"] * arrow_scale
+            )
+
+            # 3. Apply the padding offset (since we are drawing on the expanded canvas)
+            cx += coord_offset
+            cy += coord_offset
+            fx += coord_offset
+            fy += coord_offset
+
+            # 4. Draw the Line (Shaft)
+            # We use a thick line for visibility
+            draw.line([(cx, cy), (fx, fy)], fill="cyan", width=3)
+
+            # 5. Draw a simple Circle at the tip (Head)
+            # (easier than calculating a rotated triangle)
+            r = 4 # radius
+            draw.ellipse([(fx-r, fy-r), (fx+r, fy+r)], fill="cyan")
+
     def visualize_and_publish(self):
         """Draw tracked objects and signs on image using PIL and publish."""
         if self.latest_image is None:
             return
 
+        # Check for track timeouts and clear if needed
+        current_time = self.get_clock().now()
+        
+        if self.last_object_track_time is not None:
+            time_diff = (current_time - self.last_object_track_time).nanoseconds / 1e9
+            if time_diff > self.track_timeout_sec:
+                self.latest_object_tracks = []
+                
+        if self.last_sign_track_time is not None:
+            time_diff = (current_time - self.last_sign_track_time).nanoseconds / 1e9
+            if time_diff > self.track_timeout_sec:
+                self.latest_sign_tracks = []
+
         try:
-            # Convert numpy array to PIL Image
-            pil_image = PILImage.fromarray(self.latest_image)
+            # Get original image dimensions
+            orig_height, orig_width = self.latest_image.shape[:2]
+            
+            # Create expanded canvas (add padding for boxes extending beyond bounds)
+            padding = 200  # pixels of padding on all sides
+            expanded_height = orig_height + 2 * padding
+            expanded_width = orig_width + 2 * padding
+            
+            # Create expanded image with black background
+            expanded_image = np.zeros((expanded_height, expanded_width, 3), dtype=np.uint8)
+            
+            # Paste original image in center
+            expanded_image[padding:padding+orig_height, padding:padding+orig_width] = self.latest_image
+            
+            # Convert expanded numpy array to PIL Image
+            pil_image = PILImage.fromarray(expanded_image)
             draw = ImageDraw.Draw(pil_image)
 
             # Try to load a font (fallback to default if not available)
@@ -620,7 +697,7 @@ class TrackingVisualizationNode(SmartyNode):
                 font_large = ImageFont.load_default()
                 font_normal = ImageFont.load_default()
 
-            # Draw tracked objects (cars, pedestrians)
+            # Draw tracked objects (cars, pedestrians) - adjust coords by padding
             for track in self.latest_object_tracks:
                 self.draw_track(
                     draw,
@@ -629,9 +706,10 @@ class TrackingVisualizationNode(SmartyNode):
                     is_sign=False,
                     font_large=font_large,
                     font_normal=font_normal,
+                    coord_offset=padding,  # New parameter
                 )
 
-            # Draw tracked signs
+            # Draw tracked signs - adjust coords by padding
             for track in self.latest_sign_tracks:
                 self.draw_track(
                     draw,
@@ -640,24 +718,28 @@ class TrackingVisualizationNode(SmartyNode):
                     is_sign=True,
                     font_large=font_large,
                     font_normal=font_normal,
+                    coord_offset=padding,  # New parameter
                 )
 
-            # Draw statistics
+            # Draw statistics (on expanded canvas, so add padding offset)
             stats_text = f"Objects: {len(self.latest_object_tracks)} | Signs: {len(self.latest_sign_tracks)} | Frame: {self.frame_count}"
-            draw.rectangle([(5, 5), (350, 30)], fill="black", outline="white")
-            draw.text((10, 10), stats_text, fill="white", font=font_normal)
+            draw.rectangle([(5+padding, 5+padding), (350+padding, 30+padding)], fill="black", outline="white")
+            draw.text((10+padding, 10+padding), stats_text, fill="white", font=font_normal)
 
             # Legend
-            legend_y = 40
+            legend_y = 40 + padding
             draw.text(
-                (10, legend_y),
-                "O# = Object Track | S# = Sign Track",
+                (10+padding, legend_y),
+                "O# = Object Track TEST | S# = Sign Track",
                 fill="white",
                 font=font_normal,
             )
 
-            # Convert back to numpy and publish
+            # Convert back to numpy
             result_image = np.array(pil_image)
+            
+            # Crop back to original size (remove padding)
+            result_image = result_image[padding:padding+orig_height, padding:padding+orig_width]
 
             # Convert RGB to BGR for ROS
             result_image_bgr = cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR)

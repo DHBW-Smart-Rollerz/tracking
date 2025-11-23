@@ -18,7 +18,7 @@ object_tracking_node:
     min_age: 3              # Min frames for track confirmation
 
     # Data association
-    max_distance: 500.0     # Max Mahalanobis distance for matching (mm)
+    max_distance: 9.21 #500     # Max Mahalanobis distance for matching (mm)
                             # Larger = more permissive matching
                             # Smaller = stricter matching
 

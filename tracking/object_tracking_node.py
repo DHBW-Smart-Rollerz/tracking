@@ -40,7 +40,7 @@ class ObjectTrackingNode(SmartyNode):
                 "max_x": 5000.0,  # Max valid x position (mm)
                 "max_y": 3000.0,  # Max valid y position (mm)
                 # Object tracker parameters (moving objects)
-                "object_max_age": 5,  # Max frames without update
+                "object_max_age": 20,  # Max frames without update
                 "object_min_hits": 3,  # Min hits for confirmation
                 "object_min_age": 3,  # Min age for confirmation
                 "object_max_distance": 9.21,  # Max Mahalanobis distance (chi-squared, 99% confidence for 2D)
@@ -50,7 +50,7 @@ class ObjectTrackingNode(SmartyNode):
                 "object_sigma_pos_init": 500.0,  # Initial position uncertainty (mm)
                 "object_sigma_vel_init": 1000.0,  # Initial velocity uncertainty (mm/s)
                 # Sign tracker parameters (static objects)
-                "sign_max_age": 10,  # Longer for signs (don't disappear)
+                "sign_max_age": 20,  # Longer for signs (don't disappear)
                 "sign_min_hits": 2,  # Faster confirmation for signs
                 "sign_min_age": 2,  # Shorter confirmation time
                 "sign_max_distance": 9.21,  # Max Mahalanobis distance (chi-squared, 99% confidence for 2D)
@@ -99,6 +99,7 @@ class ObjectTrackingNode(SmartyNode):
         Create tracker for moving objects (cars, pedestrians).
 
         Uses standard parameters optimized for dynamic objects.
+        IDs start from 0 to avoid conflicts with sign tracker.
 
         Returns:
             MultiObjectTracker instance for objects
@@ -115,6 +116,7 @@ class ObjectTrackingNode(SmartyNode):
             r_pos=self.object_r_pos,
             sigma_pos_init=self.object_sigma_pos_init,
             sigma_vel_init=self.object_sigma_vel_init,
+            id_offset=0,  # Object IDs: 0, 1, 2, 3, ...
         )
 
     def _create_sign_tracker(self):
@@ -125,6 +127,8 @@ class ObjectTrackingNode(SmartyNode):
         - Longer max_age (signs don't disappear quickly)
         - Fewer min_hits (faster confirmation)
         - Lower process noise (signs don't move)
+        
+        IDs start from 10000 to avoid conflicts with object tracker.
 
         Returns:
             MultiObjectTracker instance for signs
@@ -141,6 +145,7 @@ class ObjectTrackingNode(SmartyNode):
             r_pos=self.sign_r_pos,
             sigma_pos_init=self.sign_sigma_pos_init,
             sigma_vel_init=self.sign_sigma_vel_init,
+            id_offset=10000,  # Sign IDs: 10000, 10001, 10002, ...
         )
 
     @property
