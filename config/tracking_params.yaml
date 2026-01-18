@@ -1,41 +1,40 @@
-# tracking_params.yaml
+# Object Tracking Node Parameters
+# Copy this to your config/ directory
 
-# Subscriber topics
-image_subscriber: "/camera/image/undistorted"
-object_detection_subscriber: "/object_detection/object"
-sign_detection__subscriber: "/object_detection/sign"
+object_tracking_node:
+  ros__parameters:
+    # Node settings
+    debug: true
+    detection_topic: "/object_detection/object"
+    tracking_output_topic: "/object_tracking/tracked_objects"
 
-# Publisher topics
-object_tracking_publisher: "/object_tracking/tracked_objects"
-sign_tracking_publisher: "/sign_tracking/tracked_signs"
+    # Time step (must match your detection rate!)
+    # 10 Hz = 0.1s, 20 Hz = 0.05s
+    dt: 0.1
 
-# Parameters
-state: 1         # NodeState.ACTIVE.value (ersetze ggf. mit deinem tatsächlichen Enum-Wert)
-debug: false
+    # Track management
+    max_age: 5              # Max frames without update before deletion
+    min_hits: 3             # Min successful updates for track confirmation
+    min_age: 3              # Min frames for track confirmation
 
-# Common parameters
-dt: 0.1
-max_x: 5000.0
-max_y: 3000.0
+    # Data association
+    max_distance: 9.21 #500     # Max Mahalanobis distance for matching (mm)
+                            # Larger = more permissive matching
+                            # Smaller = stricter matching
 
-# Object tracker parameters (moving objects)
-object_max_age: 20
-object_min_hits: 3
-object_min_age: 3
-object_max_distance: 9.21
-object_q_pos: 50.0
-object_q_vel: 100.0
-object_r_pos: 100.0
-object_sigma_pos_init: 500.0
-object_sigma_vel_init: 1000.0
+    # Valid tracking area
+    max_x: 5000.0           # Max x position (mm) - forward range
+    max_y: 3000.0           # Max y position (mm) - lateral range
 
-# Sign tracker parameters (static objects)
-sign_max_age: 20
-sign_min_hits: 2
-sign_min_age: 2
-sign_max_distance: 9.21
-sign_q_pos: 25.0
-sign_q_vel: 50.0
-sign_r_pos: 100.0
-sign_sigma_pos_init: 300.0
-sign_sigma_vel_init: 500.0
+    # Kalman Filter: Process noise
+    # Higher values = trust model less, rely more on measurements
+    q_pos: 50.0             # Position process noise (mm)
+    q_vel: 100.0            # Velocity process noise (mm/s)
+
+    # Kalman Filter: Measurement noise
+    # Higher values = trust measurements less
+    r_pos: 100.0            # Position measurement noise (mm)
+
+    # Kalman Filter: Initial uncertainty
+    sigma_pos_init: 500.0   # Initial position uncertainty (mm)
+    sigma_vel_init: 1000.0  # Initial velocity uncertainty (mm/s)
