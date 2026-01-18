@@ -1,53 +1,78 @@
-# ROS2 Example Package
+## Interfaces (Input & Output)
 
-[![Build Test](https://github.com/DHBW-Smart-Rollerz/ros2_example_package/actions/workflows/build-test.yaml/badge.svg)](https://github.com/DHBW-Smart-Rollerz/ros2_example_package/actions/workflows/build-test.yaml)
+Da wir aktuell `Float32MultiArray` nutzen, ist die **Reihenfolge der Daten im Array strikt einzuhalten**.
 
-This repository contains an example package for ros2 (python).
+### 1. Input (Subscribed Topics)
 
-## Usage
+Der Tracker erwartet Daten vom `object_detection_node`.
 
-This repository can be used as template. Simply select this repo when creating a new repository under template.
+* **Topics:**
+* `/object_detection/object` (Bewegliche Objekte)
+* `/object_detection/sign` (Statische Schilder)
 
-Alternatively, you can create python ros packages with:
 
-```bash
-# If not already created
-mkdir -p ~/ros2_ws/src
-cd ~/ros2_ws/src
+* **Format:** `Float32MultiArray`
+* **Daten-Struktur (Flattened Array):**
+Pro erkanntem Objekt müssen exakt **6 Werte** im Array stehen:
+```text
+[ID, BL_x, BL_y, BR_x, BR_y, Score]
 
-# Create package
-ros2 pkg create my_package --build-type ament_python --dependencies rclpy
-
-# Build
-cd ~/ros2_ws/src
-colcon build --symlink-install --packages-select my_package
 ```
 
-## Structure
 
-- `config/`: All configurations (most of the time yaml files)
-- `launch/`: Contains all launch files. Launch files can start multiple nodes with yaml-configurations
-- `models/`: Contains all models (optional) and only necessary for machine learning nodes
-- `resource/`: Contains the package name (required to build with colcon)
-- `ros2_example_package`: Contains all nodes and sources for the ros package
-- `test/`: Contains all tests
-- `package.xml`: Contains metadata about the package
-- `setup.py`: Used for Python package configuration
-- `setup.cfg`: Additional configuration for the package
-- `requirements.txt`: Python dependencies
+* `ID`: Class ID (int)
+* `BL_x/y`: Bottom-Left Koordinate (mm)
+* `BR_x/y`: Bottom-Right Koordinate (mm)
+* `Score`: Confidence (0.0 - 1.0)
 
-## Contributing
 
-Thank you for considering contributing to this repository! Here are a few guidelines to get you started:
 
-1. Fork the repository and clone it locally.
-2. Create a new branch for your contribution.
-3. Make your changes and ensure they are properly tested.
-4. Commit your changes and push them to your forked repository.
-5. Submit a pull request with a clear description of your changes.
+### 2. Output (Published Topics)
 
-We appreciate your contributions and look forward to reviewing them!
+Hier greift der Planner die Daten ab.
 
-## License
+* **Topics:**
+* `/object_tracking/tracked_objects`
+* `/sign_tracking/tracked_signs`
 
-This repository is licensed under the MIT license. See [LICENSE](LICENSE) for details.
+
+* **Format:** `Float32MultiArray`
+* **Daten-Struktur (Flattened Array):**
+Pro getracktem Objekt werden **8 Werte** gesendet:
+```text
+[Track_ID, Class_ID, x, y, vx, vy, Conf, Width]
+
+```
+
+
+* **Index 0:** `Track_ID` (Stabile ID über die Zeit)
+* **Index 1:** `Class_ID` (Objektklasse)
+* **Index 2:** `x` (Position in mm, Fahrzeug-koordinaten)
+* **Index 3:** `y` (Position in mm, Fahrzeug-koordinaten)
+* **Index 4:** `vx` (Geschwindigkeit x in mm/s)
+* **Index 5:** `vy` (Geschwindigkeit y in mm/s)
+* **Index 6:** `Confidence` (Tracking-Sicherheit, 0.0-1.0)
+* **Index 7:** `Width` (Objektbreite in mm)
+
+
+
+---
+
+## Parameter & Koordinaten
+
+* **Einheiten:** Alle Positionen und Geschwindigkeiten sind in **Millimetern (mm)**.
+* **Koordinatensystem:** Relativ zum Fahrzeug (übernommen aus Detection).
+* **Latenz-Kompensation:** Der Tracker berechnet `dt` dynamisch basierend auf den Message-Timestamps, um Lags im Netzwerk auszugleichen.
+
+## Debugging
+
+Um zu prüfen, ob der Tracker korrekt läuft:
+
+```bash
+# Output prüfen (sind IDs stabil? ändern sich x/y plausibel?)
+ros2 topic echo /object_tracking/tracked_objects
+
+# Prüfen, ob überhaupt Input ankommt
+ros2 topic echo /object_detection/object
+
+```
