@@ -11,6 +11,8 @@ import numpy as np
 
 from .track import Track
 
+from scipy.optimize import linear_sum_assignment
+
 
 class MultiObjectTracker:
     """
@@ -77,7 +79,8 @@ class MultiObjectTracker:
         self._next_track_id = id_offset
         
         # List of active tracks
-        self.tracks: List[Track] = []
+        # self.tracks: List[Track] = []
+        self.tracks: Dict[int, Track] = {}
 
         # Statistics
         self.frame_count = 0
@@ -113,121 +116,107 @@ class MultiObjectTracker:
         """
         self.frame_count += 1
 
-        # Step 1: Predict all existing tracks
-        self._predict_tracks(dt)
+        # 1. Predict (Iterieren über values)
+        for track in self.tracks.values():
+            track.predict(dt)
 
-        # Step 2: Associate detections to tracks
-        (
-            matched_tracks,
-            matched_detections,
-            unmatched_tracks,
-            unmatched_detections,
-        ) = self._associate(detections)
+        # 2. Associate
+        # Wir übergeben das Dict, aber die Logik innen muss angepasst werden
+        matched_ids, matched_dets, unmatched_ids, unmatched_dets = self._associate(detections)
 
-        # Step 3: Update matched tracks
-        for track_idx, det_idx in zip(matched_tracks, matched_detections):
-            self.tracks[track_idx].update(detections[det_idx])
+        # 3. Update matched tracks (Zugriff über ID ist jetzt O(1) und sicher!)
+        for track_id, det_idx in zip(matched_ids, matched_dets):
+            self.tracks[track_id].update(detections[det_idx])
 
-        # Step 4: Mark unmatched tracks as missed
-        for track_idx in unmatched_tracks:
-            self.tracks[track_idx].mark_missed()
+        # 4. Mark missed (Zugriff über ID)
+        for track_id in unmatched_ids:
+            self.tracks[track_id].mark_missed()
 
-        # Step 5: Create new tracks for unmatched detections
-        for det_idx in unmatched_detections:
+        # 5. Create new tracks
+        for det_idx in unmatched_dets:
             self._create_track(detections[det_idx])
 
-        # Step 6: Delete old/invalid tracks
-        self._delete_old_tracks()
+        # 6. Delete old tracks (Viel sicherer mit Dict!)
+        # Wir sammeln erst die IDs, die gelöscht werden müssen
+        ids_to_delete = []
+        for track_id, track in self.tracks.items():
+            if track.should_be_deleted(self.max_age, self.max_x, self.max_y):
+                ids_to_delete.append(track_id)
+        
+        # Dann löschen (ohne die Iteration kaputt zu machen)
+        for track_id in ids_to_delete:
+            del self.tracks[track_id]
+            self.total_tracks_deleted += 1
 
-        # Step 7: Return only confirmed tracks
         return self.get_confirmed_tracks()
 
     def _predict_tracks(self, dt: float) -> None:
         """
         Predict all active tracks to the current frame.
-        
-        Args:
-            dt: Time step in seconds
         """
-        for track in self.tracks:
+        # WICHTIG: .values() hinzufügen!
+        for track in self.tracks.values():
             track.predict(dt)
 
     def _associate(
         self, detections: List[Dict]
     ) -> Tuple[List[int], List[int], List[int], List[int]]:
         """
-        Associate detections to tracks using Mahalanobis distance with gating.
-
-        Simple greedy association algorithm:
-        1. Compute distance matrix (all tracks vs all detections)
-        2. Apply gating (reject associations with distance > threshold)
-        3. Greedy matching: assign closest detection to each track
-
-        Args:
-            detections: List of detection dictionaries
-
-        Returns:
-            Tuple of:
-                - matched_track_indices: List of track indices that were matched
-                - matched_detection_indices: List of detection indices that were matched
-                - unmatched_track_indices: List of track indices without match
-                - unmatched_detection_indices: List of detection indices without match
+        Associate detections to tracks using Hungarian Algorithm (Munkres) with gating.
         """
-        if len(self.tracks) == 0:
-            # No tracks: all detections are unmatched
+        track_ids = list(self.tracks.keys())
+        
+        if len(track_ids) == 0:
             return [], [], [], list(range(len(detections)))
-
         if len(detections) == 0:
-            # No detections: all tracks are unmatched
-            return [], [], list(range(len(self.tracks))), []
+            return [], [], track_ids, []
+        # 1. Distanz-Matrix berechnen
+        # Matrix berechnen (Achtung: _compute_distance_matrix muss jetzt track_ids nehmen!)
+        distance_matrix = self._compute_distance_matrix(detections, track_ids)
 
-        # Compute distance matrix
-        distance_matrix = self._compute_distance_matrix(detections)
+        # 2. Matrix für Scipy vorbereiten (Scipy mag kein np.inf)
+        # Wir ersetzen unendliche Kosten durch einen sehr hohen Wert, 
+        # der garantiert über dem Gating-Threshold liegt.
+        # z.B. max_distance * 2 oder einfach 1e6
+        large_value = 1e6 
+        cost_matrix = np.nan_to_num(distance_matrix, posinf=large_value)
 
-        # Apply gating: distances > threshold become invalid
-        distance_matrix[distance_matrix > self.max_distance] = np.inf
+        # 3. Ungarischer Algorithmus (Globale Optimierung)
+        # row_indices sind Track-Indizes, col_indices sind Detection-Indizes
+        row_indices, col_indices = linear_sum_assignment(cost_matrix)
 
-        # Greedy matching
-        matched_tracks = []
-        matched_detections = []
-        used_detections = set()
+        # matched_tracks = []
+        # matched_detections = []
+        
+        matched_track_ids = []  # Achtung: IDs, keine Indizes mehr!
+        matched_det_indices = []
+        
+        # Sets für schnelles Lookup der unmatched
+        unmatched_track_ids_set = set(track_ids)
+        unmatched_det_indices_set = set(range(len(detections)))
 
-        # For each track, find the closest detection
-        for track_idx in range(len(self.tracks)):
-            # Get distances for this track to all detections
-            distances = distance_matrix[track_idx, :]
-
-            # Find minimum distance (excluding already used detections)
-            min_dist = np.inf
-            best_det_idx = -1
-
-            for det_idx in range(len(detections)):
-                if det_idx not in used_detections and distances[det_idx] < min_dist:
-                    min_dist = distances[det_idx]
-                    best_det_idx = det_idx
-
-            # If a valid match was found
-            if best_det_idx >= 0 and min_dist < np.inf:
-                matched_tracks.append(track_idx)
-                matched_detections.append(best_det_idx)
-                used_detections.add(best_det_idx)
-
-        # Find unmatched tracks and detections
-        unmatched_tracks = [
-            i for i in range(len(self.tracks)) if i not in matched_tracks
-        ]
-        unmatched_detections = [
-            i for i in range(len(detections)) if i not in used_detections
-        ]
+        for r, c in zip(row_indices, col_indices):
+            if distance_matrix[r, c] <= self.max_distance:
+                # HIER IST DER TRICK:
+                # Wir wandeln Matrix-Zeile 'r' zurück in echte 'track_id'
+                actual_track_id = track_ids[r]
+                
+                matched_track_ids.append(actual_track_id)
+                matched_det_indices.append(c)
+                
+                if actual_track_id in unmatched_track_ids_set:
+                    unmatched_track_ids_set.remove(actual_track_id)
+                if c in unmatched_det_indices_set:
+                    unmatched_det_indices_set.remove(c)
 
         return (
-            matched_tracks,
-            matched_detections,
-            unmatched_tracks,
-            unmatched_detections,
+            matched_track_ids,
+            matched_det_indices,
+            list(unmatched_track_ids_set),
+            list(unmatched_det_indices_set)
         )
 
-    def _compute_distance_matrix(self, detections: List[Dict]) -> np.ndarray:
+    def _compute_distance_matrix(self, detections: List[Dict], track_ids: List[int]) -> np.ndarray:
         """
         Compute Mahalanobis distance matrix between tracks and detections.
 
@@ -256,7 +245,8 @@ class MultiObjectTracker:
         # No object jumps 1 meter in 0.1s unless your velocity model is very wrong
         MAX_EUCLIDEAN_DISTANCE = 1000.0
 
-        for i, track in enumerate(self.tracks):
+        for i, track_id in enumerate(track_ids):
+            track = self.tracks[track_id]  # Zugriff per Dict Key
             # Get predicted measurement and innovation covariance
             z_pred = track.get_predicted_measurement()  # [x, y]
 
@@ -326,7 +316,10 @@ class MultiObjectTracker:
             sigma_pos_init=self.sigma_pos_init,
             sigma_vel_init=self.sigma_vel_init,
         )
-        self.tracks.append(new_track)
+        # self.tracks.append(new_track)
+        # self.total_tracks_created += 1
+        # Neu: Speichern im Dictionary unter der ID
+        self.tracks[track_id] = new_track
         self.total_tracks_created += 1
 
     def _delete_old_tracks(self) -> None:
@@ -360,7 +353,8 @@ class MultiObjectTracker:
             List of track dictionaries (from track.to_dict())
         """
         confirmed = []
-        for track in self.tracks:
+        # WICHTIG: .values() hinzufügen!
+        for track in self.tracks.values():
             if track.is_confirmed(min_hits=self.min_hits, min_age=self.min_age):
                 confirmed.append(track.to_dict())
         return confirmed
@@ -368,13 +362,9 @@ class MultiObjectTracker:
     def get_all_tracks(self) -> List[Dict]:
         """
         Get all tracks (including unconfirmed) as dictionaries.
-
-        Useful for debugging/visualization.
-
-        Returns:
-            List of all track dictionaries
         """
-        return [track.to_dict() for track in self.tracks]
+        # WICHTIG: .values() hinzufügen!
+        return [track.to_dict() for track in self.tracks.values()]
 
     def get_statistics(self) -> Dict:
         """
@@ -383,8 +373,9 @@ class MultiObjectTracker:
         Returns:
             Dictionary with statistics
         """
+        # WICHTIG: .values() hinzufügen!
         num_confirmed = sum(
-            1 for t in self.tracks if t.is_confirmed(self.min_hits, self.min_age)
+            1 for t in self.tracks.values() if t.is_confirmed(self.min_hits, self.min_age)
         )
 
         return {
