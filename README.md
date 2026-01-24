@@ -58,6 +58,37 @@ Pro getracktem Objekt werden **8 Werte** gesendet:
 
 ---
 
+### 3. Bedeutung der IDs
+
+Der Tracker unterscheidet strikt zwischen **dynamischen Objekten** und **statischen Schildern**. Die eingehenden IDs entsprechen den *gemappten IDs* aus der Object Detection Node.
+
+### a. Object Tracker
+
+Diese Objekte werden auf dem Topic `/object_detection/object` erwartet und besitzen eine Bewegungs-Historie.
+
+| Class ID | Bedeutung | Internes Label |
+| --- | --- | --- |
+| **2** | Auto | `car` |
+| **10** | Fußgänger | `pedestrian` |
+
+### b. Sign Tracker
+
+Diese Objekte werden auf dem Topic `/object_detection/sign` erwartet. Sie werden mit Parametern für statische Objekte getrackt (geringeres Rauschen, längere Lebensdauer).
+
+| Class ID | Bedeutung | Internes Label |
+| --- | --- | --- |
+| **1** | Stoppschild | `stop-sign` |
+| **7** | 30er Zone (Anfang) | `thirty-sign` |
+| **8** | Ende 30er Zone | `no-thirty-sign` |
+| **9** | Zebrastreifen | `crosswalk-sign` |
+| **14** | Parken | `parking-sign` |
+| **15** | Links abbiegen | `go-left-sign` |
+| **16** | Rechts abbiegen | `go-right-sign` |
+| **17** | Vorfahrtstraße | `intersection-right-of-way` |
+| **18** | Vorfahrt gewähren | `intersaction-grant-sign` |
+
+---
+
 ## Parameter & Koordinaten
 
 * **Einheiten:** Alle Positionen und Geschwindigkeiten sind in **Millimetern (mm)**.
