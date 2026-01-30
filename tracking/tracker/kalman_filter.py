@@ -1,7 +1,6 @@
 """
 Kalman Filter Implementation for 2D Object Tracking.
 
-Based on lecture slides "Messdatenerfassung_v1-1.pdf" (Pages 125-138).
 Implements a 2D Constant Velocity Model for tracking objects in autonomous vehicles.
 
 State Vector: s = [x, y, vx, vy]ᵀ
@@ -20,12 +19,6 @@ import numpy as np
 class KalmanFilter:
     """
     2D Kalman Filter for object tracking with constant velocity model.
-
-    References:
-        - Slide 125: State transition model
-        - Slide 130: Prediction equations
-        - Slide 134-136: Update equations (Kalman Gain)
-        - Slide 137: Complete algorithm summary
     """
 
     def __init__(self):
@@ -37,7 +30,7 @@ class KalmanFilter:
         self.state_dim = 4  # [x, y, vx, vy]
         self.measurement_dim = 2  # [x, y]
 
-        # Create measurement matrix H (Slide 136)
+        # Create measurement matrix H
         # H maps state to measurement: z = H @ s
         self.H = np.array(
             [
@@ -53,12 +46,6 @@ class KalmanFilter:
     def _create_state_transition_matrix(self, dt: float) -> np.ndarray:
         """
         Create the state transition matrix F for constant velocity model.
-
-        From Slide 125:
-            x_new = x_old + vx * dt
-            y_new = y_old + vy * dt
-            vx_new = vx_old (constant velocity)
-            vy_new = vy_old (constant velocity)
 
         Args:
             dt: Time step in seconds
@@ -83,7 +70,7 @@ class KalmanFilter:
         """
         Prediction step of the Kalman Filter.
 
-        Implements equations from Slide 130 and Slide 137:
+        Implements equations:
             s_predict = F @ s_current
             Σ_predict = F @ Σ_current @ F^T + Q
 
@@ -101,10 +88,10 @@ class KalmanFilter:
         # Create state transition matrix F with current dt
         F = self._create_state_transition_matrix(dt)
         
-        # Predict state (Slide 137: s_p = F·s_t)
+        # Predict state (s_p = F·s_t)
         s_predict = F @ s
 
-        # Predict covariance (Slide 137: Σ_p = F·Σ_t·F^T + Q)
+        # Predict covariance (Σ_p = F·Σ_t·F^T + Q)
         # Note: Adding process noise Q accounts for model uncertainty
         Sigma_predict = F @ Sigma @ F.T + Q
 
@@ -119,12 +106,6 @@ class KalmanFilter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Update step of the Kalman Filter with a new measurement.
-
-        Implements equations from Slide 136-137:
-            1. Compute Kalman Gain: K = Σ_p @ H^T @ (H @ Σ_p @ H^T + R)^(-1)
-            2. Compute innovation: y = z_measured - H @ s_predict
-            3. Update state: s_update = s_predict + K @ y
-            4. Update covariance: Σ_update = (I - K @ H) @ Σ_predict
 
         Args:
             s_predict: Predicted state vector [x, y, vx, vy] (4,)
@@ -141,7 +122,7 @@ class KalmanFilter:
         # This is the uncertainty in the measurement space
         S = self.H @ Sigma_predict @ self.H.T + R
 
-        # Kalman Gain (Slide 136: K = Σ_p @ (Σ_p + Σ_m)^(-1))
+        # Kalman Gain
         # K determines how much we trust the measurement vs. the prediction
         K = Sigma_predict @ self.H.T @ np.linalg.inv(S)
 
@@ -149,11 +130,11 @@ class KalmanFilter:
         # y = z_measured - z_predicted, where z_predicted = H @ s_predict
         y = z - (self.H @ s_predict)
 
-        # Update state (Slide 136: s_u = s_p + K(ŝ_m - s_p))
+        # Update state
         # Note: K @ y is equivalent to K @ (ŝ_m - s_p) when transformed via H
         s_update = s_predict + K @ y
 
-        # Update covariance (Slide 136: Σ_u = Σ_p - K·Σ_p)
+        # Update covariance
         # Alternative stable form: (I - K @ H) @ Σ_predict
         Sigma_update = (self.I - K @ self.H) @ Sigma_predict
 
