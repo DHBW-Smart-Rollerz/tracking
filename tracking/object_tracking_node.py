@@ -29,9 +29,11 @@ class ObjectTrackingNode(SmartyNode):
                 "image_subscriber": "/camera/image/undistorted",
                 "object_detection_subscriber": "/object_detection/object",
                 "sign_detection__subscriber": "/object_detection/sign",
+                "crossing_detection_subscriber": "/crossing_detection/result",
                 # Publisher topics
                 "object_tracking_publisher": "/object_tracking/tracked_objects",
                 "sign_tracking_publisher": "/sign_tracking/tracked_signs",
+                "crossing_tracking_publisher": "/crossing_tracking/tracked_crossings",
                 # Parameters
                 "state": NodeState.ACTIVE.value,
                 "debug": False,
@@ -59,6 +61,16 @@ class ObjectTrackingNode(SmartyNode):
                 "sign_r_pos": 100.0,  # Measurement noise: position (mm)
                 "sign_sigma_pos_init": 300.0,  # Lower initial position uncertainty
                 "sign_sigma_vel_init": 500.0,  # Lower initial velocity uncertainty
+                # Crossing tracker parameters (static lines)
+                "crossing_max_age": 25,  # Kreuzungslinien bleiben lange sichtbar
+                "crossing_min_hits": 2,  # Schnelle Bestätigung
+                "crossing_min_age": 2,
+                "crossing_max_distance": 9.21,
+                "crossing_q_pos": 20.0,  # Sehr niedrig – Linien bewegen sich kaum
+                "crossing_q_vel": 30.0,
+                "crossing_r_pos": 80.0,
+                "crossing_sigma_pos_init": 300.0,
+                "crossing_sigma_vel_init": 300.0,
             },
             subscribed_topics={
                 "object_detection_subscriber": (
@@ -71,20 +83,28 @@ class ObjectTrackingNode(SmartyNode):
                     self.sign_detection_callback,
                     1,
                 ),
+                "crossing_detection_subscriber": (
+                    Float32MultiArray,
+                    self.crossing_detection_callback,
+                    1,
+                ),
             },
             published_topics={
                 "object_tracking_publisher": (Float32MultiArray, 1),
                 "sign_tracking_publisher": (Float32MultiArray, 1),
+                "crossing_tracking_publisher": (Float32MultiArray, 1),
             },
         )
 
         # Initialize two separate trackers with different parameters
         self.object_tracker = self._create_object_tracker()
         self.sign_tracker = self._create_sign_tracker()
+        self.crossing_tracker = self._create_crossing_tracker()
 
         # Timestamp tracking for dynamic dt calculation
         self.last_object_time = None
         self.last_sign_time = None
+        self.last_crossing_time = None
 
         self.get_logger().info("ObjectTrackingNode initialized with dual trackers")
         self.get_logger().info("Subscribed topics:")
@@ -127,7 +147,7 @@ class ObjectTrackingNode(SmartyNode):
         - Longer max_age (signs don't disappear quickly)
         - Fewer min_hits (faster confirmation)
         - Lower process noise (signs don't move)
-        
+
         IDs start from 10000 to avoid conflicts with object tracker.
 
         Returns:
@@ -146,6 +166,26 @@ class ObjectTrackingNode(SmartyNode):
             sigma_pos_init=self.sign_sigma_pos_init,
             sigma_vel_init=self.sign_sigma_vel_init,
             id_offset=10000,  # Sign IDs: 10000, 10001, 10002, ...
+        )
+
+    def _create_crossing_tracker(self):
+        """Create tracker for crossing/intersection lines (ego, opp lane markings).
+
+        IDs start from 20000 to avoid conflicts with object (0+) and sign (10000+) trackers.
+        """
+        return MultiObjectTracker(
+            max_age=self.crossing_max_age,
+            min_hits=self.crossing_min_hits,
+            min_age=self.crossing_min_age,
+            max_distance=self.crossing_max_distance,
+            max_x=self.max_x,
+            max_y=self.max_y,
+            q_pos=self.crossing_q_pos,
+            q_vel=self.crossing_q_vel,
+            r_pos=self.crossing_r_pos,
+            sigma_pos_init=self.crossing_sigma_pos_init,
+            sigma_vel_init=self.crossing_sigma_vel_init,
+            id_offset=20000,
         )
 
     @property
@@ -253,6 +293,51 @@ class ObjectTrackingNode(SmartyNode):
         """Return the sign_sigma_vel_init parameter."""
         return self.get_parameter("sign_sigma_vel_init").value  # type: ignore
 
+    @property
+    def crossing_max_age(self) -> int:
+        """Return the crossing_max_age parameter."""
+        return self.get_parameter("crossing_max_age").value  # type: ignore
+
+    @property
+    def crossing_min_hits(self) -> int:
+        """Return the crossing_min_hits parameter."""
+        return self.get_parameter("crossing_min_hits").value  # type: ignore
+
+    @property
+    def crossing_min_age(self) -> int:
+        """Return the crossing_min_age parameter."""
+        return self.get_parameter("crossing_min_age").value  # type: ignore
+
+    @property
+    def crossing_max_distance(self) -> float:
+        """Return the crossing_max_distance parameter."""
+        return self.get_parameter("crossing_max_distance").value  # type: ignore
+
+    @property
+    def crossing_q_pos(self) -> float:
+        """Return the crossing_q_pos parameter."""
+        return self.get_parameter("crossing_q_pos").value  # type: ignore
+
+    @property
+    def crossing_q_vel(self) -> float:
+        """Return the crossing_q_vel parameter."""
+        return self.get_parameter("crossing_q_vel").value  # type: ignore
+
+    @property
+    def crossing_r_pos(self) -> float:
+        """Return the crossing_r_pos parameter."""
+        return self.get_parameter("crossing_r_pos").value  # type: ignore
+
+    @property
+    def crossing_sigma_pos_init(self) -> float:
+        """Return the crossing_sigma_pos_init parameter."""
+        return self.get_parameter("crossing_sigma_pos_init").value  # type: ignore
+
+    @property
+    def crossing_sigma_vel_init(self) -> float:
+        """Return the crossing_sigma_vel_init parameter."""
+        return self.get_parameter("crossing_sigma_vel_init").value  # type: ignore
+
     def object_detection_callback(self, msg: Float32MultiArray):
         """
         Callback for object detections (cars, pedestrians).
@@ -269,7 +354,7 @@ class ObjectTrackingNode(SmartyNode):
         else:
             # First frame: use default dt
             dt = self.dt
-        
+
         self.last_object_time = current_time
 
         if self._debug:
@@ -337,7 +422,7 @@ class ObjectTrackingNode(SmartyNode):
         else:
             # First frame: use default dt
             dt = self.dt
-        
+
         self.last_sign_time = current_time
 
         if self._debug:
@@ -388,6 +473,23 @@ class ObjectTrackingNode(SmartyNode):
                     )
         elif self._debug:
             self.get_logger().info("No confirmed sign tracks to publish")
+
+    def crossing_detection_callback(self, msg: Float32MultiArray):
+        """Callback for crossing detections (ego/opp lane lines)."""
+        current_time = self.get_clock().now()
+        if self.last_crossing_time is not None:
+            dt = (current_time - self.last_crossing_time).nanoseconds * 1e-9
+            dt = max(0.01, min(1.0, dt))
+        else:
+            dt = self.dt
+        self.last_crossing_time = current_time
+
+        detections = self.parse_detections(msg)
+        confirmed_tracks = self.crossing_tracker.update(detections, dt=dt)
+
+        if confirmed_tracks:
+            tracking_msg = self.create_tracking_message(confirmed_tracks)
+            self.crossing_tracking_publisher.publish(tracking_msg)
 
     def parse_detections(self, msg: Float32MultiArray):
         """
@@ -506,6 +608,7 @@ def main(args=None):
         # Log final statistics before shutdown
         object_stats = node.object_tracker.get_statistics()
         sign_stats = node.sign_tracker.get_statistics()
+        crossing_stats = node.crossing_tracker.get_statistics()
 
         node.get_logger().info("=" * 60)
         node.get_logger().info("Shutting down Object Tracking Node")
@@ -527,6 +630,18 @@ def main(args=None):
         node.get_logger().info(f"  Total tracks created: {sign_stats['total_created']}")
         node.get_logger().info(f"  Total tracks deleted: {sign_stats['total_deleted']}")
         node.get_logger().info(f"  Active tracks: {sign_stats['active_tracks']}")
+        node.get_logger().info("-" * 60)
+        node.get_logger().info("Crossing Tracker Statistics:")
+        node.get_logger().info(
+            f"  Total frames processed: {crossing_stats['frame_count']}"
+        )
+        node.get_logger().info(
+            f"  Total tracks created: {crossing_stats['total_created']}"
+        )
+        node.get_logger().info(
+            f"  Total tracks deleted: {crossing_stats['total_deleted']}"
+        )
+        node.get_logger().info(f"  Active tracks: {crossing_stats['active_tracks']}")
         node.get_logger().info("=" * 60)
 
         node.destroy_node()
