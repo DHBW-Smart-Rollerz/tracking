@@ -30,7 +30,7 @@ class MultiObjectTracker:
         max_age: int = 5,
         min_hits: int = 3,
         min_age: int = 3,
-        max_distance: float = 9.21,
+        max_distance: float = 3.03,
         max_x: float = 5000.0,
         max_y: float = 3000.0,
         q_pos: float = 50.0,
@@ -47,8 +47,8 @@ class MultiObjectTracker:
             max_age: Maximum frames without update before deleting track (default: 5)
             min_hits: Minimum hits for track confirmation (default: 3)
             min_age: Minimum age for track confirmation (default: 3)
-            max_distance: Maximum Mahalanobis distance for association (default: 9.21)
-                         9.21 corresponds to 99% confidence for 2D (chi-squared)
+            max_distance: Maximum Mahalanobis distance for association (default: 3.03)
+                         3.03 corresponds to 99% confidence for 2D (chi-squared)
             max_x: Maximum valid x position in mm (default: 5000)
             max_y: Maximum valid y position in mm (default: 3000)
             q_pos: Process noise std dev for position [mm] (default: 50)
@@ -57,7 +57,7 @@ class MultiObjectTracker:
             sigma_pos_init: Initial position uncertainty [mm] (default: 500)
             sigma_vel_init: Initial velocity uncertainty [mm/s] (default: 1000)
             id_offset: Offset for track IDs to avoid conflicts between trackers (default: 0)
-            
+
         Note: dt is now passed dynamically to update() based on actual timestamps.
         """
         # Track management parameters
@@ -77,7 +77,7 @@ class MultiObjectTracker:
 
         # Instance-level track ID counter (prevents ID conflicts between trackers)
         self._next_track_id = id_offset
-        
+
         # List of active tracks
         # self.tracks: List[Track] = []
         self.tracks: Dict[int, Track] = {}
@@ -86,7 +86,7 @@ class MultiObjectTracker:
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
-        
+
         self._initial_id_offset = id_offset  # <--- Store this
         self._next_track_id = id_offset
 
@@ -122,7 +122,9 @@ class MultiObjectTracker:
 
         # 2. Associate
         # Wir übergeben das Dict, aber die Logik innen muss angepasst werden
-        matched_ids, matched_dets, unmatched_ids, unmatched_dets = self._associate(detections)
+        matched_ids, matched_dets, unmatched_ids, unmatched_dets = self._associate(
+            detections
+        )
 
         # 3. Update matched tracks (Zugriff über ID ist jetzt O(1) und sicher!)
         for track_id, det_idx in zip(matched_ids, matched_dets):
@@ -142,7 +144,7 @@ class MultiObjectTracker:
         for track_id, track in self.tracks.items():
             if track.should_be_deleted(self.max_age, self.max_x, self.max_y):
                 ids_to_delete.append(track_id)
-        
+
         # Dann löschen (ohne die Iteration kaputt zu machen)
         for track_id in ids_to_delete:
             del self.tracks[track_id]
@@ -165,7 +167,7 @@ class MultiObjectTracker:
         Associate detections to tracks using Hungarian Algorithm (Munkres) with gating.
         """
         track_ids = list(self.tracks.keys())
-        
+
         if len(track_ids) == 0:
             return [], [], [], list(range(len(detections)))
         if len(detections) == 0:
@@ -175,10 +177,10 @@ class MultiObjectTracker:
         distance_matrix = self._compute_distance_matrix(detections, track_ids)
 
         # 2. Matrix für Scipy vorbereiten (Scipy mag kein np.inf)
-        # Wir ersetzen unendliche Kosten durch einen sehr hohen Wert, 
+        # Wir ersetzen unendliche Kosten durch einen sehr hohen Wert,
         # der garantiert über dem Gating-Threshold liegt.
         # z.B. max_distance * 2 oder einfach 1e6
-        large_value = 1e6 
+        large_value = 1e6
         cost_matrix = np.nan_to_num(distance_matrix, posinf=large_value)
 
         # 3. Ungarischer Algorithmus (Globale Optimierung)
@@ -187,10 +189,10 @@ class MultiObjectTracker:
 
         # matched_tracks = []
         # matched_detections = []
-        
+
         matched_track_ids = []  # Achtung: IDs, keine Indizes mehr!
         matched_det_indices = []
-        
+
         # Sets für schnelles Lookup der unmatched
         unmatched_track_ids_set = set(track_ids)
         unmatched_det_indices_set = set(range(len(detections)))
@@ -200,10 +202,10 @@ class MultiObjectTracker:
                 # HIER IST DER TRICK:
                 # Wir wandeln Matrix-Zeile 'r' zurück in echte 'track_id'
                 actual_track_id = track_ids[r]
-                
+
                 matched_track_ids.append(actual_track_id)
                 matched_det_indices.append(c)
-                
+
                 if actual_track_id in unmatched_track_ids_set:
                     unmatched_track_ids_set.remove(actual_track_id)
                 if c in unmatched_det_indices_set:
@@ -213,10 +215,12 @@ class MultiObjectTracker:
             matched_track_ids,
             matched_det_indices,
             list(unmatched_track_ids_set),
-            list(unmatched_det_indices_set)
+            list(unmatched_det_indices_set),
         )
 
-    def _compute_distance_matrix(self, detections: List[Dict], track_ids: List[int]) -> np.ndarray:
+    def _compute_distance_matrix(
+        self, detections: List[Dict], track_ids: List[int]
+    ) -> np.ndarray:
         """
         Compute Mahalanobis distance matrix between tracks and detections.
 
@@ -240,7 +244,7 @@ class MultiObjectTracker:
         num_detections = len(detections)
 
         distance_matrix = np.zeros((num_tracks, num_detections), dtype=np.float32)
-        
+
         # HARD LIMIT: e.g., 1.0 meters (1000mm)
         # No object jumps 1 meter in 0.1s unless your velocity model is very wrong
         MAX_EUCLIDEAN_DISTANCE = 1000.0
@@ -261,7 +265,7 @@ class MultiObjectTracker:
                 # ADD THIS: Hard Gating on Class ID
                 # If the detection class is different from track class, set distance to Infinity
                 # (Unless you want to allow class switching, but we just established that causes bugs)
-                
+
                 if track.class_id != detection["class_id"]:
                     distance_matrix[i, j] = np.inf
                     continue
@@ -273,10 +277,10 @@ class MultiObjectTracker:
 
                 # Innovation (residual)
                 y = z - z_pred
-                
+
                 # 1. Calculate simple Euclidean distance
                 euclidean_dist = np.linalg.norm(y)
-                
+
                 # 2. THE FIX: Immediate rejection based on physical distance
                 if euclidean_dist > MAX_EUCLIDEAN_DISTANCE:
                     distance_matrix[i, j] = np.inf
@@ -306,7 +310,7 @@ class MultiObjectTracker:
         # Get next unique ID from this tracker's counter
         track_id = self._next_track_id
         self._next_track_id += 1
-        
+
         new_track = Track(
             detection=detection,
             track_id=track_id,
@@ -375,7 +379,9 @@ class MultiObjectTracker:
         """
         # WICHTIG: .values() hinzufügen!
         num_confirmed = sum(
-            1 for t in self.tracks.values() if t.is_confirmed(self.min_hits, self.min_age)
+            1
+            for t in self.tracks.values()
+            if t.is_confirmed(self.min_hits, self.min_age)
         )
 
         return {
@@ -389,7 +395,7 @@ class MultiObjectTracker:
     def reset(self, reset_id_counter: bool = True) -> None:
         """
         Reset the tracker (delete all tracks and reset statistics).
-        
+
         Args:
             reset_id_counter: If True, reset the ID counter to id_offset (default: True)
                              Set to False if you want to preserve continuous ID numbering
@@ -398,7 +404,7 @@ class MultiObjectTracker:
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
-        
+
         # Reset instance-level ID counter (not global!)
         if reset_id_counter:
             # Reset to initial offset (preserves separation between trackers)
