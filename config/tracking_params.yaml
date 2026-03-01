@@ -46,16 +46,16 @@ object_tracking_node:
     sign_min_age: 2             # Shorter confirmation time
     sign_max_distance: 3.03     # Max Mahalanobis distance (chi² 99%, 2 DoF)
     sign_q_pos: 25.0            # Lower process noise (static)
-    sign_q_vel: 50.0            # Lower velocity noise
+    sign_q_vel: 50.0            # Lowevelocity noise
     sign_r_pos: 100.0           # Measurement noise: position (mm)
     sign_sigma_pos_init: 300.0  # Lower initial uncertainty
     sign_sigma_vel_init: 500.0  # Lower initial velocity uncertainty
 
     # --- Crossing tracker (lane lines at intersections) ---
     # IDs: 20000+
-    crossing_max_age: 25        # Long lifetime (lines stay visible)
-    crossing_min_hits: 2        # Fast confirmation
-    crossing_min_age: 2
+    crossing_max_age: 3        # Long lifetime (lines stay visible)
+    crossing_min_hits: 1        # Fast confirmation
+    crossing_min_age: 0
     crossing_max_distance: 3.03
     crossing_q_pos: 20.0        # Very low (lines barely move)
     crossing_q_vel: 30.0
