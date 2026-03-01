@@ -21,24 +21,25 @@ class MultiObjectTracker:
     The tracker maintains a list of active tracks and performs:
     1. Prediction: Predict all tracks to current frame
     2. Association: Match detections to tracks using Mahalanobis distance
-    3. Update: Update matched tracks with detections
+    3. Update: Update matched tracks with detec tions
     4. Management: Create new tracks, delete old tracks
     """
 
     def __init__(
+        # Parameters for initialization only, please change in tracking_params.yaml
         self,
-        max_age: int = 5,
-        min_hits: int = 3,
-        min_age: int = 3,
-        max_distance: float = 3.03,
-        max_x: float = 5000.0,
-        max_y: float = 3000.0,
-        q_pos: float = 50.0,
-        q_vel: float = 100.0,
-        r_pos: float = 100.0,
-        sigma_pos_init: float = 500.0,
-        sigma_vel_init: float = 1000.0,
-        id_offset: int = 0,
+        max_age: int = None,
+        min_hits: int = None,
+        min_age: int = None,
+        max_distance: float = None,
+        max_x: float = None,
+        max_y: float = None,
+        q_pos: float = None,
+        q_vel: float = None,
+        r_pos: float = None,
+        sigma_pos_init: float = None,
+        sigma_vel_init: float = None,
+        id_offset: int = None,
     ):
         """
         Initialize the Multi-Object Tracker.
