@@ -6,23 +6,25 @@ This node maintains three separate trackers:
 - One for static signs from /object_detection/sign
 - One for crossing lane lines from /crossing_detection/result
 
-Each tracker has its own optimized parameters.
-
-Parameter flow (single source of truth):
-  tracking_params.yaml → node_parameters (declaration defaults) → MultiObjectTracker
-  The YAML file is the authoritative source.
+It bundles all confirmed tracks into a single state_msgs/State message
+and publishes them at a fixed frequency.
 """
+
+import time
+
 
 import rclpy
 from smarty_utils.enums import NodeState
 from smarty_utils.smarty_node import SmartyNode
 from std_msgs.msg import Float32MultiArray
 
+import std_msgs
+import std_msgs.msg
+import state_msgs.msg
+
 from tracking.tracker import MultiObjectTracker
 
 
-# Tracker parameter names (shared across all tracker types).
-# These get prefixed with "object_", "sign_", or "crossing_" in the YAML/node.
 _TRACKER_PARAM_KEYS = [
     "max_age",
     "min_hits",
@@ -45,22 +47,19 @@ class ObjectTrackingNode(SmartyNode):
             "object_tracking_node",
             "tracking",
             node_parameters={
-                # All parameters here are for initialization ONLY. The values are set in tracking_params.yaml
-                # Please don't fill any values in here to prevent confusion.
                 # Subscriber topics
                 "image_subscriber": None,
                 "object_detection_subscriber": None,
                 "sign_detection__subscriber": None,
                 "crossing_detection_subscriber": None,
-                # Publisher topics
-                "object_tracking_publisher": None,
-                "sign_tracking_publisher": None,
-                "crossing_tracking_publisher": None,
+                # Publisher topics (nur noch einer!)
+                "state_publisher": None,
                 # Node settings
                 "state": None,
                 "debug": None,
                 # Common parameters
                 "dt": None,
+                "publish_interval_ms": None,  # Neuer Parameter für den Timer
                 "max_x": None,
                 "max_y": None,
                 # Object tracker parameters
@@ -112,9 +111,8 @@ class ObjectTrackingNode(SmartyNode):
                 ),
             },
             published_topics={
-                "object_tracking_publisher": (Float32MultiArray, 1),
-                "sign_tracking_publisher": (Float32MultiArray, 1),
-                "crossing_tracking_publisher": (Float32MultiArray, 1),
+                # Gebündelter State-Publisher mit deiner Custom Message
+                "state_publisher": (state_msgs.msg.State, 1),
             },
         )
 
@@ -130,175 +128,134 @@ class ObjectTrackingNode(SmartyNode):
 
         self._log_startup_info()
 
+        # Timer für das Veröffentlichen mit fester Frequenz einrichten
+        interval_sec = self._param("publish_interval_ms") / 1000.0
+        self.publish_timer = self.create_timer(
+            interval_sec, self.publish_state_callback
+        )
+        self.get_logger().info(
+            f"State publisher timer set to {self._param('publish_interval_ms')} ms ({1/interval_sec:.1f} Hz)"
+        )
+
     # -------------------------------------------------------------------------
     # Parameter helpers
     # -------------------------------------------------------------------------
 
     def _param(self, name: str):
-        """Read a single ROS parameter value."""
         return self.get_parameter(name).value
 
     def _get_tracker_params(self, prefix: str) -> dict:
-        """
-        Read all tracker parameters for a given prefix from the ROS parameter server.
-
-        Args:
-            prefix: One of "object", "sign", "crossing".
-
-        Returns:
-            Dict with keys matching MultiObjectTracker.__init__ kwargs.
-        """
         params = {key: self._param(f"{prefix}_{key}") for key in _TRACKER_PARAM_KEYS}
         params["max_x"] = self._param("max_x")
         params["max_y"] = self._param("max_y")
         return params
 
     def _create_tracker(self, prefix: str, id_offset: int) -> MultiObjectTracker:
-        """
-        Create a MultiObjectTracker from ROS parameters.
-
-        Args:
-            prefix: Parameter prefix ("object", "sign", or "crossing").
-            id_offset: Starting ID for this tracker (0, 10000, or 20000).
-
-        Returns:
-            Configured MultiObjectTracker instance.
-        """
         params = self._get_tracker_params(prefix)
         return MultiObjectTracker(**params, id_offset=id_offset)
 
     # -------------------------------------------------------------------------
-    # Detection callbacks
+    # Detection callbacks (Nur noch für das Update zuständig!)
     # -------------------------------------------------------------------------
 
     def _calculate_dt(self, last_time, current_time) -> float:
-        """Calculate dynamic time step from timestamps, with clamping."""
         if last_time is not None:
             dt = (current_time - last_time).nanoseconds * 1e-9
-            return max(0.01, min(1.0, dt))  # Clamp to [10ms, 1s]
-        return self._param("dt")  # Fallback for first frame
+            return max(0.01, min(1.0, dt))
+        return self._param("dt")
 
-    def _process_detection(self, msg, tracker, tracker_name, publisher, last_time):
-        """
-        Shared detection processing logic for all three tracker types.
+    def _process_detection(self, msg, tracker, tracker_name, last_time):
+        """Shared detection processing logic for updating trackers."""
+        t_start = time.perf_counter()
 
-        Args:
-            msg: Float32MultiArray containing detection data.
-            tracker: The MultiObjectTracker instance.
-            tracker_name: Name for logging ("object", "sign", "crossing").
-            publisher: The ROS publisher for this tracker type.
-            last_time: Previous callback timestamp (or None).
-
-        Returns:
-            Current timestamp (to store as last_time for next call).
-        """
         current_time = self.get_clock().now()
         dt = self._calculate_dt(last_time, current_time)
 
-        if self._debug:
-            self.get_logger().info("=" * 60)
-            self.get_logger().info(
-                f"Received {tracker_name.upper()} detection | "
-                f"len={len(msg.data)} | dt={dt:.4f}s ({1/dt:.1f} Hz)"
-            )
-
         detections = self.parse_detections(msg)
 
-        if self._debug and detections:
-            for i, det in enumerate(detections):
-                self.get_logger().info(
-                    f"  Det {i}: class={det['class_id']}, "
-                    f"pos=({det['center']['x']:.1f}, {det['center']['y']:.1f}), "
-                    f"score={det['score']:.3f}"
-                )
-
-        confirmed_tracks = tracker.update(detections, dt=dt)
+        # Tracker aktualisieren (gibt confirmed_tracks zurück, aber wir ignorieren
+        # den Return-Wert hier, da der Timer sie asynchron abholt)
+        tracker.update(detections, dt=dt)
 
         if self._debug:
             stats = tracker.get_statistics()
             self.get_logger().info(
                 f"{tracker_name} stats: active={stats['active_tracks']}, "
                 f"confirmed={stats['confirmed_tracks']}, "
-                f"frame={stats['frame_count']}"
+                f"frame={stats['frame_count']} | dt={dt:.4f}s"
             )
-
-        if confirmed_tracks:
-            tracking_msg = self.create_tracking_message(confirmed_tracks)
-            publisher.publish(tracking_msg)
-
-            if self._debug:
-                self.get_logger().info(
-                    f"Published {len(confirmed_tracks)} {tracker_name} track(s)"
-                )
-                for track in confirmed_tracks:
-                    self.get_logger().info(
-                        f"  ID {track['track_id']}: class={track['class_id']}, "
-                        f"pos=({track['position']['x']:.1f}, {track['position']['y']:.1f}), "
-                        f"vel=({track['velocity']['vx']:.1f}, {track['velocity']['vy']:.1f}), "
-                        f"conf={track['confidence']:.3f}, hits={track['hits']}"
-                    )
-        elif self._debug:
-            self.get_logger().info(f"No confirmed {tracker_name} tracks to publish")
 
         return current_time
 
     def object_detection_callback(self, msg: Float32MultiArray):
-        """Callback for object detections (cars, pedestrians)."""
         self.last_object_time = self._process_detection(
-            msg,
-            self.object_tracker,
-            "object",
-            self.object_tracking_publisher,
-            self.last_object_time,
+            msg, self.object_tracker, "object", self.last_object_time
         )
 
     def sign_detection_callback(self, msg: Float32MultiArray):
-        """Callback for sign detections."""
         self.last_sign_time = self._process_detection(
-            msg,
-            self.sign_tracker,
-            "sign",
-            self.sign_tracking_publisher,
-            self.last_sign_time,
+            msg, self.sign_tracker, "sign", self.last_sign_time
         )
 
     def crossing_detection_callback(self, msg: Float32MultiArray):
-        """Callback for crossing detections (ego/opp lane lines)."""
         self.last_crossing_time = self._process_detection(
-            msg,
-            self.crossing_tracker,
-            "crossing",
-            self.crossing_tracking_publisher,
-            self.last_crossing_time,
+            msg, self.crossing_tracker, "crossing", self.last_crossing_time
         )
 
     # -------------------------------------------------------------------------
-    # Message parsing / creation
+    # Publisher Callback (Timer-basiert)
+    # -------------------------------------------------------------------------
+
+    def publish_state_callback(self):
+        """Called by the timer to publish the combined state of all trackers."""
+        if not self._param("state") == NodeState.ACTIVE.value:
+            return
+
+        # 1. State Message vorbereiten
+        state_msg = state_msgs.msg.State()
+
+        # 2. Confirmed Tracks von allen drei Trackern einsammeln
+        all_confirmed_tracks = []
+        all_confirmed_tracks.extend(self.object_tracker.get_confirmed_tracks())
+        all_confirmed_tracks.extend(self.sign_tracker.get_confirmed_tracks())
+        all_confirmed_tracks.extend(self.crossing_tracker.get_confirmed_tracks())
+
+        # 3. Dictionaries in TrackedObject.msg umwandeln
+        for obj in all_confirmed_tracks:
+            tracked_obj = state_msgs.msg.TrackedObject()
+
+            # Typkonvertierung zu float64, wie in TrackedObject.msg gefordert
+            tracked_obj.tracked_id = float(obj["track_id"])
+            tracked_obj.class_id = float(obj["class_id"])
+            tracked_obj.position_x = float(obj["position"]["x"])
+            tracked_obj.position_y = float(obj["position"]["y"])
+            tracked_obj.velocity_x = float(obj["velocity"]["vx"])
+            tracked_obj.velocity_y = float(obj["velocity"]["vy"])
+            tracked_obj.confidence = float(obj["confidence"])
+            tracked_obj.width = float(obj["width"])
+
+            # Dem Array in der State-Message hinzufügen
+            state_msg.tracked_objects.append(tracked_obj)
+
+        # 4. Senden
+        self.state_publisher.publish(state_msg)
+
+    # -------------------------------------------------------------------------
+    # Message parsing
     # -------------------------------------------------------------------------
 
     def parse_detections(self, msg: Float32MultiArray):
-        """
-        Parse the Float32MultiArray into individual detections.
-
-        Format per detection (6 values):
-        [class_id, bottom_left_x, bottom_left_y, bottom_right_x, bottom_right_y, score]
-
-        Coordinates are in ego-frame millimeters.
-        """
+        """Parse the Float32MultiArray into individual detections."""
         data = msg.data
         values_per_detection = 6
 
         if len(data) == 0:
-            if self._debug:
-                self.get_logger().info("No detections in this frame")
             return []
 
         if len(data) % values_per_detection != 0:
             self.get_logger().warn(
-                f"Unexpected data length: {len(data)} "
-                f"(not divisible by {values_per_detection})"
+                f"Unexpected data length: {len(data)} (not divisible by {values_per_detection})"
             )
-            self.get_logger().info(f"Raw data: {list(data)}")
             return []
 
         detections = []
@@ -319,39 +276,14 @@ class ObjectTrackingNode(SmartyNode):
 
         return detections
 
-    def create_tracking_message(self, tracked_objects):
-        """
-        Create a Float32MultiArray from tracked objects.
-
-        Format per object: [track_id, class_id, x, y, vx, vy, confidence, width]
-        """
-        msg = Float32MultiArray()
-        data = []
-
-        for obj in tracked_objects:
-            data.extend(
-                [
-                    float(obj["track_id"]),
-                    float(obj["class_id"]),
-                    float(obj["position"]["x"]),
-                    float(obj["position"]["y"]),
-                    float(obj["velocity"]["vx"]),
-                    float(obj["velocity"]["vy"]),
-                    float(obj["confidence"]),
-                    float(obj["width"]),
-                ]
-            )
-
-        msg.data = data
-        return msg
-
     # -------------------------------------------------------------------------
     # Logging helpers
     # -------------------------------------------------------------------------
 
     def _log_startup_info(self):
-        """Log subscription and publication info at startup."""
-        self.get_logger().info("ObjectTrackingNode initialized with 3 trackers")
+        self.get_logger().info(
+            "ObjectTrackingNode initialized with 3 trackers (Timer-based publishing)"
+        )
         self.get_logger().info("Subscribed topics:")
         for key in self.subscribed_topics:
             self.get_logger().info(f"  {key}: {self._param(key)}")
@@ -360,7 +292,6 @@ class ObjectTrackingNode(SmartyNode):
             self.get_logger().info(f"  {key}: {self._param(key)}")
 
     def _log_tracker_stats(self, name: str, stats: dict):
-        """Log statistics for a single tracker."""
         self.get_logger().info(f"{name} Tracker Statistics:")
         self.get_logger().info(f"  Frames processed: {stats['frame_count']}")
         self.get_logger().info(f"  Tracks created:   {stats['total_created']}")
@@ -369,7 +300,6 @@ class ObjectTrackingNode(SmartyNode):
 
 
 def main(args=None):
-    """Main function to start the ObjectTrackingNode."""
     rclpy.init(args=args)
     node = ObjectTrackingNode()
 
@@ -390,7 +320,6 @@ def main(args=None):
             node._log_tracker_stats(name, tracker.get_statistics())
             node.get_logger().info("-" * 60)
 
-        node.get_logger().info("=" * 60)
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

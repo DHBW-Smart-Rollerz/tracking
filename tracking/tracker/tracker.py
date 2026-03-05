@@ -5,6 +5,7 @@ Manages multiple tracks and associates detections to existing tracks using
 Mahalanobis distance with gating (simple but effective approach).
 """
 
+import time
 from typing import Dict, List, Set, Tuple
 
 import numpy as np
@@ -91,6 +92,16 @@ class MultiObjectTracker:
         self._initial_id_offset = id_offset  # <--- Store this
         self._next_track_id = id_offset
 
+        # Performance timing statistics (running averages)
+        self._timing_history = {
+            "predict": [],
+            "associate": [],
+            "update": [],
+            "create_delete": [],
+            "total": [],
+        }
+        self._timing_window = 100  # Keep last N measurements for averaging
+
     def update(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
         """
         Main tracking update function. Call this once per frame with new detections.
@@ -116,16 +127,19 @@ class MultiObjectTracker:
             List of confirmed track dictionaries (from track.to_dict())
         """
         self.frame_count += 1
+        t0 = time.perf_counter()
 
         # 1. Predict (Iterieren über values)
         for track in self.tracks.values():
             track.predict(dt)
+        t1 = time.perf_counter()
 
         # 2. Associate
         # Wir übergeben das Dict, aber die Logik innen muss angepasst werden
         matched_ids, matched_dets, unmatched_ids, unmatched_dets = self._associate(
             detections
         )
+        t2 = time.perf_counter()
 
         # 3. Update matched tracks (Zugriff über ID ist jetzt O(1) und sicher!)
         for track_id, det_idx in zip(matched_ids, matched_dets):
@@ -134,6 +148,7 @@ class MultiObjectTracker:
         # 4. Mark missed (Zugriff über ID)
         for track_id in unmatched_ids:
             self.tracks[track_id].mark_missed()
+        t3 = time.perf_counter()
 
         # 5. Create new tracks
         for det_idx in unmatched_dets:
@@ -150,6 +165,21 @@ class MultiObjectTracker:
         for track_id in ids_to_delete:
             del self.tracks[track_id]
             self.total_tracks_deleted += 1
+        t4 = time.perf_counter()
+
+        # Record timing (in microseconds for precision)
+        timings = {
+            "predict": (t1 - t0) * 1e6,
+            "associate": (t2 - t1) * 1e6,
+            "update": (t3 - t2) * 1e6,
+            "create_delete": (t4 - t3) * 1e6,
+            "total": (t4 - t0) * 1e6,
+        }
+        for key, value in timings.items():
+            history = self._timing_history[key]
+            history.append(value)
+            if len(history) > self._timing_window:
+                history.pop(0)
 
         return self.get_confirmed_tracks()
 
@@ -376,7 +406,7 @@ class MultiObjectTracker:
         Get tracker statistics for monitoring/debugging.
 
         Returns:
-            Dictionary with statistics
+            Dictionary with statistics including performance timing.
         """
         # WICHTIG: .values() hinzufügen!
         num_confirmed = sum(
@@ -385,13 +415,26 @@ class MultiObjectTracker:
             if t.is_confirmed(self.min_hits, self.min_age)
         )
 
-        return {
+        stats = {
             "frame_count": self.frame_count,
             "active_tracks": len(self.tracks),
             "confirmed_tracks": num_confirmed,
             "total_created": self.total_tracks_created,
             "total_deleted": self.total_tracks_deleted,
         }
+
+        # Add timing statistics (averages over recent frames)
+        if self._timing_history["total"]:
+            import numpy as np
+
+            for key, history in self._timing_history.items():
+                if history:
+                    arr = np.array(history)
+                    stats[f"timing_{key}_avg_us"] = float(np.mean(arr))
+                    stats[f"timing_{key}_max_us"] = float(np.max(arr))
+                    stats[f"timing_{key}_last_us"] = history[-1]
+
+        return stats
 
     def reset(self, reset_id_counter: bool = True) -> None:
         """
