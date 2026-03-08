@@ -10,6 +10,8 @@ It bundles all confirmed tracks into a single state_msgs/State message
 and publishes them at a fixed frequency.
 """
 
+import csv
+import os
 import time
 
 
@@ -277,6 +279,64 @@ class ObjectTrackingNode(SmartyNode):
         return detections
 
     # -------------------------------------------------------------------------
+    # Performance data export
+    # -------------------------------------------------------------------------
+
+    def _export_timing_data(self, filepath: str = None) -> str:
+        """
+        Export timing data from all trackers to a single CSV file.
+
+        Args:
+            filepath: Output file path. Defaults to ~/tracking_timing_<timestamp>.csv
+
+        Returns:
+            The file path where data was written.
+        """
+        if filepath is None:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            # Absoluter Pfad zu deinem Source-Ordner
+            base_dir = os.path.expanduser(
+                "~/smarty_workspace/src/tracking/performance_measurements"
+            )
+
+            # Sicherstellen, dass der Ordner existiert (falls er mal gelöscht wird)
+            os.makedirs(base_dir, exist_ok=True)
+
+            filepath = os.path.join(base_dir, f"tracking_timing_{timestamp}.csv")
+
+        fieldnames = [
+            "frame",
+            "tracker",
+            "timestamp",
+            "predict_us",
+            "associate_us",
+            "update_us",
+            "create_delete_us",
+            "total_us",
+            "num_tracks",
+            "num_detections",
+        ]
+
+        total_rows = 0
+        with open(filepath, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for tracker_name, tracker in [
+                ("object", self.object_tracker),
+                ("sign", self.sign_tracker),
+                ("crossing", self.crossing_tracker),
+            ]:
+                for entry in tracker.get_timing_log():
+                    row = {"tracker": tracker_name}
+                    row.update(entry)
+                    writer.writerow(row)
+                    total_rows += 1
+
+        self.get_logger().info(f"Timing data exported: {total_rows} rows -> {filepath}")
+        return filepath
+
+    # -------------------------------------------------------------------------
     # Logging helpers
     # -------------------------------------------------------------------------
 
@@ -311,6 +371,13 @@ def main(args=None):
         node.get_logger().info("=" * 60)
         node.get_logger().info("Shutting down Object Tracking Node")
         node.get_logger().info("=" * 60)
+
+        # Export timing data to CSV before shutdown
+        try:
+            csv_path = node._export_timing_data()
+            node.get_logger().info(f"Timing CSV saved to: {csv_path}")
+        except Exception as e:
+            node.get_logger().error(f"Failed to export timing data: {e}")
 
         for name, tracker in [
             ("Object", node.object_tracker),

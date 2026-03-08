@@ -23,10 +23,10 @@ _global_track_id_counter = 0
 def get_next_track_id() -> int:
     """
     DEPRECATED: Get the next unique track ID from global counter.
-    
+
     This function is kept for backwards compatibility but should not be used
     in new code. MultiObjectTracker now manages IDs internally.
-    
+
     Returns:
         Unique track ID
     """
@@ -39,7 +39,7 @@ def get_next_track_id() -> int:
 def reset_track_id_counter() -> None:
     """
     DEPRECATED: Reset the global track ID counter.
-    
+
     This function is kept for backwards compatibility but should not be used
     in new code. Use MultiObjectTracker.reset() instead.
     """
@@ -62,11 +62,11 @@ class Track:
         self,
         detection: Dict,
         track_id: int,
-        q_pos: float = 50.0,
-        q_vel: float = 100.0,
-        r_pos: float = 100.0,
-        sigma_pos_init: float = 500.0,
-        sigma_vel_init: float = 1000.0,
+        q_pos: float = None,
+        q_vel: float = None,
+        r_pos: float = None,
+        sigma_pos_init: float = None,
+        sigma_vel_init: float = None,
     ):
         """
         Initialize a new track from a detection.
@@ -78,12 +78,12 @@ class Track:
                 - 'score': float (0-1)
                 - 'width': float (optional)
             track_id: Unique track ID (provided by tracker)
-            q_pos: Process noise std dev for position [mm] (default: 50)
-            q_vel: Process noise std dev for velocity [mm/s] (default: 100)
-            r_pos: Measurement noise std dev for position [mm] (default: 100)
-            sigma_pos_init: Initial position uncertainty [mm] (default: 500)
-            sigma_vel_init: Initial velocity uncertainty [mm/s] (default: 1000)
-            
+            q_pos: Process noise std dev for position [mm]
+            q_vel: Process noise std dev for velocity [mm/s]
+            r_pos: Measurement noise std dev for position [mm]
+            sigma_pos_init: Initial position uncertainty [mm]
+            sigma_vel_init: Initial velocity uncertainty [mm/s]
+
         Note: dt is now passed dynamically to predict() for accurate timing.
         """
         # Assign track ID from tracker
@@ -131,7 +131,7 @@ class Track:
 
         This should be called once per frame before attempting to match detections.
         Updates self.state and self.covariance with predictions.
-        
+
         Args:
             dt: Time step in seconds (time since last update)
         """
@@ -173,11 +173,11 @@ class Track:
         # REPLACE strict assignment with Voting Logic
         detected_class = detection["class_id"]
         self.class_history[detected_class] += 1
-        
+
         # The class_id is the one with the highest count in history
         # (This prevents a single flickering frame from changing the object type)
         self.class_id = max(self.class_history, key=self.class_history.get)
-        
+
         self.score = detection["score"]
         self.width = detection.get("width", self.width)
         self.last_detection = detection
