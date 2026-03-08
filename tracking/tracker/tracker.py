@@ -329,13 +329,13 @@ class MultiObjectTracker:
                 # Innovation (residual)
                 y = z - z_pred
 
-                # 1. Calculate simple Euclidean distance
-                euclidean_dist = np.linalg.norm(y)
+                # # 1. Calculate simple Euclidean distance
+                # euclidean_dist = np.linalg.norm(y)
 
-                # 2. THE FIX: Immediate rejection based on physical distance
-                if euclidean_dist > MAX_EUCLIDEAN_DISTANCE:
-                    distance_matrix[i, j] = np.inf
-                    continue
+                # # 2. THE FIX: Immediate rejection based on physical distance
+                # if euclidean_dist > MAX_EUCLIDEAN_DISTANCE:
+                #     distance_matrix[i, j] = np.inf
+                #     continue
 
                 # 3. If it passes physical check, do the smart Mahalanobis math
                 # Mahalanobis distance: d² = yᵀ S⁻¹ y
