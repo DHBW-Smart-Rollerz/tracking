@@ -59,6 +59,7 @@ class ObjectTrackingNode(SmartyNode):
                 # Node settings
                 "state": None,
                 "debug": None,
+                "export_timing_csv": None,
                 # Common parameters
                 "dt": None,
                 "publish_interval_ms": None,  # Neuer Parameter für den Timer
@@ -374,8 +375,13 @@ def main(args=None):
 
         # Export timing data to CSV before shutdown
         try:
-            csv_path = node._export_timing_data()
-            node.get_logger().info(f"Timing CSV saved to: {csv_path}")
+            if node._param("export_timing_csv"):
+                csv_path = node._export_timing_data()
+                node.get_logger().info(f"Timing CSV saved to: {csv_path}")
+            else:
+                node.get_logger().info(
+                    "Timing CSV export disabled (export_timing_csv: false)"
+                )
         except Exception as e:
             node.get_logger().error(f"Failed to export timing data: {e}")
 
