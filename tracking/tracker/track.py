@@ -17,7 +17,7 @@ from collections import defaultdict
 # DEPRECATED: Global track ID counter (kept for backwards compatibility)
 # New code should pass track_id directly to Track.__init__()
 # Each MultiObjectTracker now maintains its own instance-level counter
-_global_track_id_counter = 0
+# _global_track_id_counter = 0
 
 
 def get_next_track_id() -> int:
@@ -387,107 +387,3 @@ class Track:
             f"pos=({x:.1f}, {y:.1f}), vel=({vx:.1f}, {vy:.1f}), "
             f"hits={self.hits}, age={self.age})"
         )
-
-
-if __name__ == "__main__":
-    """
-    Simple test to verify the Track implementation.
-    """
-    print("=" * 60)
-    print("Track Class Test")
-    print("=" * 60)
-
-    # Create a mock detection
-    detection1 = {
-        "class_id": 2,  # Vehicle
-        "score": 0.95,
-        "center": {"x": 1000.0, "y": 500.0},
-        "width": 300.0,
-    }
-
-    print(f"\nCreating new track from detection:")
-    print(f"  Position: ({detection1['center']['x']}, {detection1['center']['y']})")
-    print(f"  Class: {detection1['class_id']}, Score: {detection1['score']}")
-
-    # Create track (manually specify ID for test)
-    track = Track(detection1, track_id=0)
-
-    print(f"\nTrack created: {track}")
-    print(f"  Initial state: {track.state}")
-    print(f"  Position uncertainty: {track.get_position_uncertainty():.1f} mm")
-    print(f"  Is confirmed? {track.is_confirmed()}")
-
-    # Simulate tracking over several frames
-    print(f"\n" + "=" * 60)
-    print("Simulation: Tracking object over 5 frames")
-    print("=" * 60)
-
-    detections = [
-        {
-            "class_id": 2,
-            "score": 0.93,
-            "center": {"x": 1020.0, "y": 495.0},
-            "width": 300.0,
-        },
-        {
-            "class_id": 2,
-            "score": 0.94,
-            "center": {"x": 1040.0, "y": 490.0},
-            "width": 300.0,
-        },
-        {
-            "class_id": 2,
-            "score": 0.96,
-            "center": {"x": 1060.0, "y": 485.0},
-            "width": 300.0,
-        },
-        None,  # Missed detection (occlusion)
-        {
-            "class_id": 2,
-            "score": 0.92,
-            "center": {"x": 1100.0, "y": 475.0},
-            "width": 300.0,
-        },
-    ]
-
-    for i, det in enumerate(detections, start=1):
-        print(f"\n--- Frame {i} ---")
-
-        # Predict (with dt=0.1 for test)
-        track.predict(dt=0.1)
-        x_pred, y_pred = track.get_position()
-        print(f"After Predict: pos=({x_pred:.1f}, {y_pred:.1f})")
-
-        if det is not None:
-            # Update with measurement
-            track.update(det)
-            x_upd, y_upd = track.get_position()
-            vx, vy = track.get_velocity()
-            print(f"Detection at: ({det['center']['x']}, {det['center']['y']})")
-            print(
-                f"After Update: pos=({x_upd:.1f}, {y_upd:.1f}), vel=({vx:.1f}, {vy:.1f})"
-            )
-        else:
-            # No detection
-            track.mark_missed()
-            print(f"No detection (missed)")
-
-        print(
-            f"Track info: hits={track.hits}, age={track.age}, "
-            f"time_since_update={track.time_since_update}"
-        )
-        print(f"Position uncertainty: {track.get_position_uncertainty():.1f} mm")
-        print(f"Is confirmed? {track.is_confirmed()}")
-        print(f"Should delete? {track.should_be_deleted()}")
-
-    # Show final track as dictionary
-    print(f"\n" + "=" * 60)
-    print("Final Track Dictionary:")
-    print("=" * 60)
-    track_dict = track.to_dict()
-    for key, value in track_dict.items():
-        print(f"  {key}: {value}")
-
-    print("\n" + "=" * 60)
-    print("Test completed successfully! ✓")
-    print("=" * 60)
