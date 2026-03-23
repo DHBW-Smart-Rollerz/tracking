@@ -18,11 +18,8 @@ object_tracking_node:
     sign_detection__subscriber: "/object_detection/sign"
     crossing_detection_subscriber: "/crossing_detection/result"
     state_subscriber: "/tracking/state" # <-- NEU!
-
-    # --- Publisher topics ---
-    # object_tracking_publisher: "/object_tracking/tracked_objects"
-    # sign_tracking_publisher: "/sign_tracking/tracked_signs"
-    # crossing_tracking_publisher: "/crossing_tracking/tracked_crossings"
+    velocity_subscriber: "/sensor/velocity"
+    steering_angle_subscriber: "/sensor/steering_angle"
 
     # --- Publisher topics ---
     state_publisher: "/tracking/state"
@@ -32,6 +29,10 @@ object_tracking_node:
     publish_interval_ms: 15 # Neu: Publisher-Frequenz in Millisekunden
     max_x: 5000.0       # Max valid x position (mm) - forward range
     max_y: 3000.0       # Max valid y position (mm) - lateral range
+
+    # --- Ego-motion compensation ---
+    wheelbase: 257.0            # Vehicle wheelbase in mm (MST RMX 2.0 chassis)
+    ego_compensation_enabled: false  # Toggle for A/B testing
 
     # --- Object tracker (moving objects: cars, pedestrians) ---
     # IDs: 0+

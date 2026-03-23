@@ -689,7 +689,7 @@ class TrackingVisualizationNode(SmartyNode):
             legend_y = 40 + padding
             draw.text(
                 (10 + padding, legend_y),
-                "O# = Object | S# = Sign | C# = Crossing Guten Morgen",
+                "O# = Object | S# = Sign | C# = Crossing 12345",
                 fill="white",
                 font=font_normal,
             )

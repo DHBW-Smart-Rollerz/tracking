@@ -11,6 +11,7 @@ and publishes them at a fixed frequency.
 """
 
 import csv
+import math
 import os
 import time
 
@@ -18,7 +19,7 @@ import time
 import rclpy
 from smarty_utils.enums import NodeState
 from smarty_utils.smarty_node import SmartyNode
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Float32, Int16
 
 import std_msgs
 import std_msgs.msg
@@ -54,12 +55,18 @@ class ObjectTrackingNode(SmartyNode):
                 "object_detection_subscriber": None,
                 "sign_detection__subscriber": None,
                 "crossing_detection_subscriber": None,
+                # IMU / ego-motion topics
+                "velocity_subscriber": None,
+                "steering_angle_subscriber": None,
                 # Publisher topics (nur noch einer!)
                 "state_publisher": None,
                 # Node settings
                 "state": None,
                 "debug": None,
                 "export_timing_csv": None,
+                # Ego-motion compensation
+                "wheelbase": None,
+                "ego_compensation_enabled": None,
                 # Common parameters
                 "dt": None,
                 "publish_interval_ms": None,  # Neuer Parameter für den Timer
@@ -112,6 +119,16 @@ class ObjectTrackingNode(SmartyNode):
                     self.crossing_detection_callback,
                     1,
                 ),
+                "velocity_subscriber": (
+                    Float32,
+                    self.velocity_callback,
+                    1,
+                ),
+                "steering_angle_subscriber": (
+                    Int16,
+                    self.steering_angle_callback,
+                    1,
+                ),
             },
             published_topics={
                 # Gebündelter State-Publisher mit deiner Custom Message
@@ -128,6 +145,10 @@ class ObjectTrackingNode(SmartyNode):
         self.last_object_time = None
         self.last_sign_time = None
         self.last_crossing_time = None
+
+        # Latest IMU values (updated asynchronously by subscribers)
+        self.latest_velocity = 0.0  # mm/s, forward speed
+        self.latest_steering_angle = 0.0  # degrees, positive = left
 
         self._log_startup_info()
 
@@ -155,7 +176,9 @@ class ObjectTrackingNode(SmartyNode):
 
     def _create_tracker(self, prefix: str, id_offset: int) -> MultiObjectTracker:
         params = self._get_tracker_params(prefix)
-        return MultiObjectTracker(**params, id_offset=id_offset)
+        return MultiObjectTracker(
+            **params, id_offset=id_offset, wheelbase=self._param("wheelbase")
+        )
 
     # -------------------------------------------------------------------------
     # Detection callbacks (Nur noch für das Update zuständig!)
@@ -178,7 +201,15 @@ class ObjectTrackingNode(SmartyNode):
 
         # Tracker aktualisieren (gibt confirmed_tracks zurück, aber wir ignorieren
         # den Return-Wert hier, da der Timer sie asynchron abholt)
-        tracker.update(detections, dt=dt)
+        if self._param("ego_compensation_enabled"):
+            tracker.update(
+                detections,
+                dt=dt,
+                ego_velocity=self.latest_velocity,
+                steering_angle=self.latest_steering_angle,
+            )
+        else:
+            tracker.update(detections, dt=dt)
 
         if self._debug:
             stats = tracker.get_statistics()
@@ -204,6 +235,25 @@ class ObjectTrackingNode(SmartyNode):
         self.last_crossing_time = self._process_detection(
             msg, self.crossing_tracker, "crossing", self.last_crossing_time
         )
+
+    # -------------------------------------------------------------------------
+    # IMU callbacks (store latest values for ego-motion compensation)
+    # -------------------------------------------------------------------------
+
+    def velocity_callback(self, msg: Float32):
+        """Store latest ego velocity from IMU (mm/s). Filters NaN values."""
+        if not math.isnan(msg.data):
+            self.latest_velocity = msg.data
+
+    def steering_angle_callback(self, msg: Int16):
+        """
+        Store latest steering angle from sensor (degrees).
+
+        Sensor convention: positive = right turn
+        Tracking convention: positive = left turn (Y-axis points left)
+        → Negate the value.
+        """
+        self.latest_steering_angle = -float(msg.data)
 
     # -------------------------------------------------------------------------
     # Publisher Callback (Timer-basiert)
@@ -309,6 +359,7 @@ class ObjectTrackingNode(SmartyNode):
             "frame",
             "tracker",
             "timestamp",
+            "ego_compensate_us",
             "predict_us",
             "associate_us",
             "update_us",

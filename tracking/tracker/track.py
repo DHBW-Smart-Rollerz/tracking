@@ -125,6 +125,48 @@ class Track:
         self.class_history[detection["class_id"]] += 1
         self.class_id = detection["class_id"]
 
+    def compensate_ego_motion(self, dx: float, dy: float, dtheta: float) -> None:
+        """
+        Transform track state from old ego frame to new ego frame.
+
+        This compensates for the vehicle's own movement between frames.
+        Must be called BEFORE predict() each frame.
+
+        The transformation accounts for:
+        - Translation: the ego vehicle moved by (dx, dy) in the old frame
+        - Rotation: the ego vehicle rotated by dtheta (positive = left turn)
+
+        Objects that are actually static will have near-zero velocity after
+        compensation, instead of inheriting the ego vehicle's motion.
+
+        Args:
+            dx: Ego displacement in x (forward) in mm, in old frame coordinates
+            dy: Ego displacement in y (left) in mm, in old frame coordinates
+            dtheta: Ego heading change in radians (positive = counter-clockwise / left)
+        """
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9 and abs(dtheta) < 1e-9:
+            return  # No ego motion, skip transformation
+
+        cos_t = np.cos(dtheta)
+        sin_t = np.sin(dtheta)
+
+        # Rotation matrix from old ego frame to new ego frame: R(-dtheta)
+        # If ego turns left by dtheta, objects appear to rotate right
+        R = np.array([[cos_t, sin_t], [-sin_t, cos_t]], dtype=np.float32)
+
+        # Transform position: subtract ego displacement, then rotate
+        pos = self.state[:2] - np.array([dx, dy], dtype=np.float32)
+        self.state[:2] = R @ pos
+
+        # Transform velocity: rotation only (no translation component)
+        self.state[2:4] = R @ self.state[2:4]
+
+        # Transform covariance: R4 @ Σ @ R4ᵀ where R4 = blockdiag(R, R)
+        R4 = np.zeros((4, 4), dtype=np.float32)
+        R4[0:2, 0:2] = R
+        R4[2:4, 2:4] = R
+        self.covariance = R4 @ self.covariance @ R4.T
+
     def predict(self, dt: float) -> None:
         """
         Predict the next state using the Kalman Filter.
@@ -179,10 +221,13 @@ class Track:
         self.class_id = max(self.class_history, key=self.class_history.get)
 
         self.score = detection["score"]
-        self.width = detection.get("width", self.width)
-        self.last_detection = detection
 
-        # Store detection
+        # Smooth width using exponential moving average (EMA)
+        # Prevents flickering from frame-to-frame detector noise
+        new_width = detection.get("width", self.width)
+        alpha = 0.3  # Smoothing factor: 0=keep old, 1=take new raw value
+        self.width = alpha * new_width + (1.0 - alpha) * self.width
+
         self.last_detection = detection
 
     def mark_missed(self) -> None:

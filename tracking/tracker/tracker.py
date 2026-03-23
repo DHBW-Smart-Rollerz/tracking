@@ -5,6 +5,7 @@ Manages multiple tracks and associates detections to existing tracks using
 Mahalanobis distance with gating (simple but effective approach).
 """
 
+import math
 import time
 from typing import Dict, List, Set, Tuple
 
@@ -41,6 +42,7 @@ class MultiObjectTracker:
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
         id_offset: int = None,
+        wheelbase: float = 257.0,
     ):
         """
         Initialize the Multi-Object Tracker.
@@ -76,6 +78,7 @@ class MultiObjectTracker:
         self.r_pos = r_pos
         self.sigma_pos_init = sigma_pos_init
         self.sigma_vel_init = sigma_vel_init
+        self.wheelbase = wheelbase
 
         # Instance-level track ID counter (prevents ID conflicts between trackers)
         self._next_track_id = id_offset
@@ -94,6 +97,7 @@ class MultiObjectTracker:
 
         # Performance timing statistics (running averages for real-time display)
         self._timing_history = {
+            "ego_compensate": [],
             "predict": [],
             "associate": [],
             "update": [],
@@ -105,11 +109,18 @@ class MultiObjectTracker:
         # Full timing log for post-run analysis (every frame, never truncated)
         self._timing_log: List[Dict] = []
 
-    def update(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
+    def update(
+        self,
+        detections: List[Dict],
+        dt: float = 0.1,
+        ego_velocity: float = 0.0,
+        steering_angle: float = 0.0,
+    ) -> List[Dict]:
         """
         Main tracking update function. Call this once per frame with new detections.
 
         Performs the complete tracking cycle:
+        0. Compensate ego motion (transform tracks to new ego frame)
         1. Predict all tracks
         2. Associate detections to tracks
         3. Update matched tracks
@@ -125,12 +136,23 @@ class MultiObjectTracker:
                 - 'width': float (optional)
             dt: Time step in seconds since last update (default: 0.1s)
                 Should be calculated from actual timestamps for accuracy.
+            ego_velocity: Vehicle forward speed in mm/s from IMU (default: 0.0)
+            steering_angle: Steering angle in degrees (default: 0.0)
+                Positive = left turn. Converted to radians internally.
 
         Returns:
             List of confirmed track dictionaries (from track.to_dict())
         """
         self.frame_count += 1
         t0 = time.perf_counter()
+
+        # 0. Ego-motion compensation (before predict!)
+        dx, dy, dtheta = self._compute_ego_displacement(
+            ego_velocity, steering_angle, dt
+        )
+        for track in self.tracks.values():
+            track.compensate_ego_motion(dx, dy, dtheta)
+        t0b = time.perf_counter()
 
         # 1. Predict (Iterieren über values)
         for track in self.tracks.values():
@@ -172,7 +194,8 @@ class MultiObjectTracker:
 
         # Record timing (in microseconds for precision)
         timings = {
-            "predict": (t1 - t0) * 1e6,
+            "ego_compensate": (t0b - t0) * 1e6,
+            "predict": (t1 - t0b) * 1e6,
             "associate": (t2 - t1) * 1e6,
             "update": (t3 - t2) * 1e6,
             "create_delete": (t4 - t3) * 1e6,
@@ -189,6 +212,7 @@ class MultiObjectTracker:
             {
                 "frame": self.frame_count,
                 "timestamp": t0,  # Wall-clock (time.perf_counter seconds)
+                "ego_compensate_us": timings["ego_compensate"],
                 "predict_us": timings["predict"],
                 "associate_us": timings["associate"],
                 "update_us": timings["update"],
@@ -200,6 +224,53 @@ class MultiObjectTracker:
         )
 
         return self.get_confirmed_tracks()
+
+    def _compute_ego_displacement(
+        self, ego_velocity: float, steering_angle_deg: float, dt: float
+    ) -> tuple:
+        """
+        Compute ego vehicle displacement using the bicycle model.
+
+        Uses the kinematic bicycle model to estimate how far the vehicle moved
+        and rotated during the time step dt.
+
+        Coordinate system:
+            X = forward (positive ahead), Y = lateral (positive left)
+            Positive steering angle = left turn = positive dtheta
+
+        Args:
+            ego_velocity: Forward speed in mm/s
+            steering_angle_deg: Steering angle in degrees (positive = left)
+            dt: Time step in seconds
+
+        Returns:
+            Tuple of (dx, dy, dtheta):
+                dx: Forward displacement in mm (old frame)
+                dy: Lateral displacement in mm (old frame)
+                dtheta: Heading change in radians (positive = left/CCW)
+        """
+        if abs(ego_velocity) < 1e-6:
+            return 0.0, 0.0, 0.0
+
+        # Safety: reject NaN/Inf values (can come from IMU dropouts)
+        if not math.isfinite(ego_velocity) or not math.isfinite(steering_angle_deg):
+            return 0.0, 0.0, 0.0
+
+        delta_rad = math.radians(steering_angle_deg)
+
+        if abs(delta_rad) < 1e-6:
+            # Straight driving (avoid division by zero in tan)
+            dx = ego_velocity * dt
+            dy = 0.0
+            dtheta = 0.0
+        else:
+            # Bicycle model: turning radius R = L / tan(delta)
+            R_turn = self.wheelbase / math.tan(delta_rad)
+            dtheta = ego_velocity * dt / R_turn  # = v * tan(delta) / L * dt
+            dx = R_turn * math.sin(dtheta)
+            dy = R_turn * (1.0 - math.cos(dtheta))
+
+        return dx, dy, dtheta
 
     def _predict_tracks(self, dt: float) -> None:
         """
