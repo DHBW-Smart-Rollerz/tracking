@@ -30,6 +30,12 @@ object_tracking_node:
     max_x: 5000.0       # Max valid x position (mm) - forward range
     max_y: 3000.0       # Max valid y position (mm) - lateral range
 
+    # --- Localization confidence parameters ---
+    # c_loc = c_Σ × c_d (covariance quality × distance penalty)
+    # Detection score remains a separate gate for track creation/publishing.
+    confidence_sigma_max: 1000.0   # σ_avg at which c_Σ = 0 (mm)
+    confidence_d_max: 8000.0      # Distance at which c_d = 0 (mm)
+
     # --- Ego-motion compensation ---
     wheelbase: 257.0            # Vehicle wheelbase in mm (MST RMX 2.0 chassis)
     ego_compensation_enabled: false  # Toggle for A/B testing
@@ -37,7 +43,7 @@ object_tracking_node:
     # --- Object tracker (moving objects: cars, pedestrians) ---
     # IDs: 0+
     object_max_age: 20          # Max frames without update before deletion
-    object_min_hits: 3          # Min successful updates for confirmation
+    object_min_hits: 6          # Min successful updates for confirmation
     object_min_age: 3           # Min frames for confirmation
     object_max_distance: 3.03   # Max Mahalanobis distance (chi² 99%, 2 DoF)
     object_q_pos: 50.0          # Process noise: position (mm)
@@ -45,23 +51,25 @@ object_tracking_node:
     object_r_pos: 100.0         # Measurement noise: position (mm)
     object_sigma_pos_init: 500.0    # Initial position uncertainty (mm)
     object_sigma_vel_init: 1000.0   # Initial velocity uncertainty (mm/s)
+    object_duplicate_distance: 150.0  # Track NMS: merge same-class tracks closer than this (mm)
 
     # --- Sign tracker (static objects: traffic signs) ---
     # IDs: 10000+
     sign_max_age: 20            # Longer lifetime (signs don't disappear)
-    sign_min_hits: 2            # Faster confirmation
-    sign_min_age: 2             # Shorter confirmation time
+    sign_min_hits: 4            # Faster confirmation
+    sign_min_age: 4             # Shorter confirmation time
     sign_max_distance: 3.03     # Max Mahalanobis distance (chi² 99%, 2 DoF)
     sign_q_pos: 25.0            # Lower process noise (static)
     sign_q_vel: 50.0            # Lowevelocity noise
     sign_r_pos: 100.0           # Measurement noise: position (mm)
     sign_sigma_pos_init: 300.0  # Lower initial uncertainty
     sign_sigma_vel_init: 500.0  # Lower initial velocity uncertainty
+    sign_duplicate_distance: 450.0  # Track NMS: merge same-class tracks closer than this (mm)
 
     # --- Crossing tracker (lane lines at intersections) ---
     # IDs: 20000+
-    crossing_max_age: 3        # Long lifetime (lines stay visible)
-    crossing_min_hits: 1        # Fast confirmation
+    crossing_max_age: 10        # Long lifetime (lines stay visible)
+    crossing_min_hits: 3        # Fast confirmation
     crossing_min_age: 0
     crossing_max_distance: 3.03
     crossing_q_pos: 20.0        # Very low (lines barely move)
@@ -69,3 +77,4 @@ object_tracking_node:
     crossing_r_pos: 80.0
     crossing_sigma_pos_init: 300.0
     crossing_sigma_vel_init: 300.0
+    crossing_duplicate_distance: 100.0  # Track NMS: tighter for lane lines (mm)

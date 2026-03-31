@@ -67,6 +67,8 @@ class Track:
         r_pos: float = None,
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
+        confidence_sigma_max: float = 500.0,
+        confidence_d_max: float = 5000.0,
     ):
         """
         Initialize a new track from a detection.
@@ -83,6 +85,8 @@ class Track:
             r_pos: Measurement noise std dev for position [mm]
             sigma_pos_init: Initial position uncertainty [mm]
             sigma_vel_init: Initial velocity uncertainty [mm/s]
+            confidence_sigma_max: Normalization constant for covariance confidence [mm] (default: 500)
+            confidence_d_max: Normalization constant for distance confidence [mm] (default: 5000)
 
         Note: dt is now passed dynamically to predict() for accurate timing.
         """
@@ -93,6 +97,10 @@ class Track:
         self.class_id = detection["class_id"]
         self.score = detection["score"]
         self.width = detection.get("width", 0.0)
+
+        # Localization confidence parameters
+        self.confidence_sigma_max = confidence_sigma_max
+        self.confidence_d_max = confidence_d_max
 
         # Initialize Kalman Filter (no dt parameter anymore)
         self.kf = KalmanFilter()
@@ -357,14 +365,20 @@ class Track:
         x, y = self.get_position()
         vx, vy = self.get_velocity()
 
-        # Compute confidence based on position uncertainty
-        # Lower uncertainty = higher confidence
-        # Scale: uncertainty 0-500mm -> confidence 1.0-0.0
+        # Localization confidence: c_loc = c_Σ × c_d
+        # Two-component metric answering "How sure am I that this object is THERE?"
+        #
+        # c_Σ: Covariance component — how uncertain is the Kalman Filter?
+        #   Grows when track is not updated (prediction-only), shrinks with measurements.
         uncertainty = self.get_position_uncertainty()
-        confidence = max(0.0, min(1.0, 1.0 - uncertainty / 500.0))
+        c_sigma = max(0.0, min(1.0, 1.0 - uncertainty / self.confidence_sigma_max))
 
-        # Also factor in detection score
-        confidence = (confidence + self.score) / 2.0
+        # c_d: Distance component — farther objects are inherently less localizable.
+        distance = np.sqrt(x**2 + y**2)
+        c_distance = max(0.0, min(1.0, 1.0 - distance / self.confidence_d_max))
+
+        # Multiplicative combination: if either factor is bad, confidence is low.
+        confidence = c_sigma * c_distance
 
         return {
             "track_id": self.track_id,

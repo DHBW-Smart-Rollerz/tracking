@@ -38,6 +38,7 @@ _TRACKER_PARAM_KEYS = [
     "r_pos",
     "sigma_pos_init",
     "sigma_vel_init",
+    "duplicate_distance",
 ]
 
 
@@ -72,6 +73,9 @@ class ObjectTrackingNode(SmartyNode):
                 "publish_interval_ms": None,  # Neuer Parameter für den Timer
                 "max_x": None,
                 "max_y": None,
+                # Localization confidence parameters
+                "confidence_sigma_max": None,
+                "confidence_d_max": None,
                 # Object tracker parameters
                 "object_max_age": None,
                 "object_min_hits": None,
@@ -82,6 +86,7 @@ class ObjectTrackingNode(SmartyNode):
                 "object_r_pos": None,
                 "object_sigma_pos_init": None,
                 "object_sigma_vel_init": None,
+                "object_duplicate_distance": None,
                 # Sign tracker parameters
                 "sign_max_age": None,
                 "sign_min_hits": None,
@@ -92,6 +97,7 @@ class ObjectTrackingNode(SmartyNode):
                 "sign_r_pos": None,
                 "sign_sigma_pos_init": None,
                 "sign_sigma_vel_init": None,
+                "sign_duplicate_distance": None,
                 # Crossing tracker parameters
                 "crossing_max_age": None,
                 "crossing_min_hits": None,
@@ -102,6 +108,7 @@ class ObjectTrackingNode(SmartyNode):
                 "crossing_r_pos": None,
                 "crossing_sigma_pos_init": None,
                 "crossing_sigma_vel_init": None,
+                "crossing_duplicate_distance": None,
             },
             subscribed_topics={
                 "object_detection_subscriber": (
@@ -172,6 +179,8 @@ class ObjectTrackingNode(SmartyNode):
         params = {key: self._param(f"{prefix}_{key}") for key in _TRACKER_PARAM_KEYS}
         params["max_x"] = self._param("max_x")
         params["max_y"] = self._param("max_y")
+        params["confidence_sigma_max"] = self._param("confidence_sigma_max")
+        params["confidence_d_max"] = self._param("confidence_d_max")
         return params
 
     def _create_tracker(self, prefix: str, id_offset: int) -> MultiObjectTracker:
@@ -364,6 +373,7 @@ class ObjectTrackingNode(SmartyNode):
             "associate_us",
             "update_us",
             "create_delete_us",
+            "deduplicate_us",
             "total_us",
             "num_tracks",
             "num_detections",
