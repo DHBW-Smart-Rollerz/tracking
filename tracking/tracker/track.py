@@ -203,10 +203,6 @@ class Track:
             [detection["center"]["x"], detection["center"]["y"]], dtype=np.float32
         )
 
-        # Store innovation norm BEFORE update
-        innovation = z - self.kf.get_measurement_prediction(self.state)
-        self._last_innovation_norm = float(np.linalg.norm(innovation))
-
         # Update state and covariance using Kalman Filter
         self.state, self.covariance = self.kf.update(
             s_predict=self.state, Sigma_predict=self.covariance, z=z, R=self.R
@@ -364,84 +360,24 @@ class Track:
         # Compute confidence based on position uncertainty
         # Lower uncertainty = higher confidence
         # Scale: uncertainty 0-500mm -> confidence 1.0-0.0
-        # uncertainty = self.get_position_uncertainty()
-        # confidence = max(0.0, min(1.0, 1.0 - uncertainty / 500.0))
+        uncertainty = self.get_position_uncertainty()
+        confidence = max(0.0, min(1.0, 1.0 - uncertainty / 500.0))
 
-        # # Also factor in detection score
-        # confidence = (confidence + self.score) / 2.0
+        # Also factor in detection score
+        confidence = (confidence + self.score) / 2.0
 
         return {
             "track_id": self.track_id,
             "class_id": self.class_id,
             "position": {"x": x, "y": y},
             "velocity": {"vx": vx, "vy": vy},
-            "confidence": self.get_tracking_confidence(),
+            "confidence": confidence,
             "age": self.age,
             "hits": self.hits,
             "time_since_update": self.time_since_update,
             "width": self.width,
         }
 
-    def get_tracking_confidence(self) -> float:
-        """
-        Compute localization confidence: "How sure are we the object is HERE?"
-
-        Combines four signals:
-        1. Position covariance (Kalman filter uncertainty)
-        2. Innovation magnitude (prediction vs. measurement agreement)
-        3. Track maturity (hit ratio)
-        4. Staleness penalty (frames without update)
-
-        Returns:
-            Confidence in [0, 1], where 1 = highly certain position
-        """
-        # --- 1. Covariance-based confidence ---
-        # Average position std dev from Kalman covariance
-        sigma_x = np.sqrt(self.covariance[0, 0])
-        sigma_y = np.sqrt(self.covariance[1, 1])
-        avg_sigma = (sigma_x + sigma_y) / 2.0
-
-        # Map to [0, 1]: sigma=0 -> 1.0, sigma>=sigma_max -> 0.0
-        # sigma_max should match your tracking area scale
-        sigma_max = 500.0  # mm — tune this to your scenario
-        c_covariance = max(0.0, 1.0 - avg_sigma / sigma_max)
-
-        # --- 2. Innovation-based confidence ---
-        # Uses last stored innovation magnitude
-        # Small residual = prediction matches reality = good
-        if hasattr(self, "_last_innovation_norm"):
-            innov_max = 300.0  # mm — expected max reasonable residual
-            c_innovation = max(0.0, 1.0 - self._last_innovation_norm / innov_max)
-        else:
-            c_innovation = 0.5  # neutral if no update yet
-
-        # --- 3. Track maturity ---
-        # hit_ratio: fraction of frames where we got a measurement
-        hit_ratio = self.hits / max(self.age, 1)
-        c_maturity = min(1.0, hit_ratio)  # already in [0, 1]
-
-        # --- 4. Staleness penalty ---
-        # Exponential decay for each frame without measurement
-        decay_rate = 0.3  # how aggressively to penalize missed frames
-        c_staleness = np.exp(-decay_rate * self.time_since_update)
-
-        # --- Weighted combination ---
-        # Covariance is the primary signal, the rest modulate it
-        confidence = (
-            0.50 * c_covariance
-            + 0.20 * c_innovation
-            + 0.15 * c_maturity
-            + 0.15 * c_staleness
-        )
-
-        return float(np.clip(confidence, 0.0, 1.0))
-
     def __repr__(self) -> str:
         """String representation for debugging."""
         x, y = self.get_position()
-        vx, vy = self.get_velocity()
-        return (
-            f"Track(id={self.track_id}, class={self.class_id}, "
-            f"pos=({x:.1f}, {y:.1f}), vel=({vx:.1f}, {vy:.1f}), "
-            f"hits={self.hits}, age={self.age})"
-        )
