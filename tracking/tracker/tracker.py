@@ -6,6 +6,7 @@ Mahalanobis distance with gating (simple but effective approach).
 """
 
 import time
+from collections import defaultdict
 from typing import Dict, List, Set, Tuple
 
 import numpy as np
@@ -210,7 +211,11 @@ class MultiObjectTracker:
         self, detections: List[Dict]
     ) -> Tuple[List[int], List[int], List[int], List[int]]:
         """
-        Associate detections to tracks using Hungarian Algorithm (Munkres) with gating.
+        Associate detections to tracks using Hungarian Algorithm per class_id.
+
+        Tracks and detections are grouped by class_id first, then the Hungarian
+        Algorithm runs separately for each class. This eliminates cross-class
+        matches by design rather than by penalizing them.
         """
         track_ids = list(self.tracks.keys())
 
@@ -218,44 +223,40 @@ class MultiObjectTracker:
             return [], [], [], list(range(len(detections)))
         if len(detections) == 0:
             return [], [], track_ids, []
-        # 1. Distanz-Matrix berechnen
-        # Matrix berechnen (Achtung: _compute_distance_matrix muss jetzt track_ids nehmen!)
-        distance_matrix = self._compute_distance_matrix(detections, track_ids)
 
-        # 2. Matrix für Scipy vorbereiten (Scipy mag kein np.inf)
-        # Wir ersetzen unendliche Kosten durch einen sehr hohen Wert,
-        # der garantiert über dem Gating-Threshold liegt.
-        # z.B. max_distance * 2 oder einfach 1e6
-        large_value = 1e6
-        cost_matrix = np.nan_to_num(distance_matrix, posinf=large_value)
+        # Group tracks and detections by class_id
+        tracks_by_class: Dict[int, List[int]] = defaultdict(list)
+        dets_by_class: Dict[int, List[int]] = defaultdict(list)
 
-        # 3. Ungarischer Algorithmus (Globale Optimierung)
-        # row_indices sind Track-Indizes, col_indices sind Detection-Indizes
-        row_indices, col_indices = linear_sum_assignment(cost_matrix)
+        for tid in track_ids:
+            tracks_by_class[self.tracks[tid].class_id].append(tid)
+        for j, det in enumerate(detections):
+            dets_by_class[det["class_id"]].append(j)
 
-        # matched_tracks = []
-        # matched_detections = []
-
-        matched_track_ids = []  # Achtung: IDs, keine Indizes mehr!
+        matched_track_ids = []
         matched_det_indices = []
-
-        # Sets für schnelles Lookup der unmatched
         unmatched_track_ids_set = set(track_ids)
         unmatched_det_indices_set = set(range(len(detections)))
 
-        for r, c in zip(row_indices, col_indices):
-            if distance_matrix[r, c] <= self.max_distance:
-                # HIER IST DER TRICK:
-                # Wir wandeln Matrix-Zeile 'r' zurück in echte 'track_id'
-                actual_track_id = track_ids[r]
+        # Run Hungarian Algorithm separately per class
+        for class_id, cls_track_ids in tracks_by_class.items():
+            cls_det_indices = dets_by_class.get(class_id, [])
+            if not cls_det_indices:
+                continue  # no detections for this class — tracks stay unmatched
 
-                matched_track_ids.append(actual_track_id)
-                matched_det_indices.append(c)
+            cls_detections = [detections[j] for j in cls_det_indices]
+            dist_matrix = self._compute_distance_matrix(cls_detections, cls_track_ids)
 
-                if actual_track_id in unmatched_track_ids_set:
-                    unmatched_track_ids_set.remove(actual_track_id)
-                if c in unmatched_det_indices_set:
-                    unmatched_det_indices_set.remove(c)
+            row_ind, col_ind = linear_sum_assignment(dist_matrix)
+
+            for r, c in zip(row_ind, col_ind):
+                if dist_matrix[r, c] <= self.max_distance:
+                    tid = cls_track_ids[r]
+                    det_idx = cls_det_indices[c]
+                    matched_track_ids.append(tid)
+                    matched_det_indices.append(det_idx)
+                    unmatched_track_ids_set.discard(tid)
+                    unmatched_det_indices_set.discard(det_idx)
 
         return (
             matched_track_ids,
@@ -286,62 +287,58 @@ class MultiObjectTracker:
             Distance matrix of shape (num_tracks, num_detections)
             Each entry [i, j] is the Mahalanobis distance from track i to detection j
         """
-        num_tracks = len(self.tracks)
+        num_tracks = len(track_ids)
         num_detections = len(detections)
 
         distance_matrix = np.zeros((num_tracks, num_detections), dtype=np.float32)
 
-        # HARD LIMIT: e.g., 1.0 meters (1000mm)
-        # No object jumps 1 meter in 0.1s unless your velocity model is very wrong
-        MAX_EUCLIDEAN_DISTANCE = 1000.0
-
         for i, track_id in enumerate(track_ids):
-            track = self.tracks[track_id]  # Zugriff per Dict Key
-            # Get predicted measurement and innovation covariance
-            z_pred = track.get_predicted_measurement()  # [x, y]
+            track = self.tracks[track_id]
 
-            # Get innovation covariance S = H @ Σ @ H^T + R
-            # For our case: H extracts position from state, so
-            # S = Σ_pos + R where Σ_pos is the 2x2 position covariance
+            # Predicted measurement: where does this track expect to see an object?
+            # get_predicted_measurement() applies the measurement matrix H to the
+            # current state s = [x, y, vx, vy] and returns the expected [x, y].
+            z_pred = track.get_predicted_measurement()
 
-            # state, cov = track.get_state()
-            # S = cov[0:2, 0:2] + track.R  # Position covariance + measurement noise
+            # Innovation covariance S = H @ Σ @ H^T + R
+            # S describes the total uncertainty of where we expect the measurement to be.
+            # It combines:
+            #   - Σ_pos (top-left 2x2 of the state covariance): how uncertain is the
+            #     Kalman filter about the current position estimate?
+            #   - R: how noisy is the detector (measurement noise)?
+            # The larger S is, the more "spread out" the acceptance region becomes.
+            # This is the key advantage of Mahalanobis over Euclidean distance:
+            # a track with high uncertainty will accept detections from further away.
             S = track.covariance[0:2, 0:2] + track.R
 
-            # Compute distance to each detection
             for j, detection in enumerate(detections):
-                # ADD THIS: Hard Gating on Class ID
-                # If the detection class is different from track class, set distance to Infinity
-                # This is the reason why we don't to any type of class voting. 
+                # All detections passed here belong to the same class as this track
+                # (guaranteed by the per-class grouping in _associate).
+                # No class_id check needed here.
 
-                if track.class_id != detection["class_id"]:
-                    distance_matrix[i, j] = np.inf
-                    continue
-                # Measurement
+                # Actual measurement: detector position [x, y] in mm
                 z = np.array(
                     [detection["center"]["x"], detection["center"]["y"]],
                     dtype=np.float32,
                 )
 
-                # Innovation (residual)
+                # Innovation (residual): difference between actual and predicted measurement
+                # y = z - ẑ   (how far off was the prediction?)
                 y = z - z_pred
 
-                # # 1. Calculate simple Euclidean distance
-                # euclidean_dist = np.linalg.norm(y)
-
-                # # 2. THE FIX: Immediate rejection based on physical distance
-                # if euclidean_dist > MAX_EUCLIDEAN_DISTANCE:
-                #     distance_matrix[i, j] = np.inf
-                #     continue
-
-                # 3. If it passes physical check, do the smart Mahalanobis math
-                # Mahalanobis distance: d² = yᵀ S⁻¹ y
-                # We use d (not d²) for easier interpretation
+                # Mahalanobis distance: d = sqrt(yᵀ S⁻¹ y)
+                # Unlike Euclidean distance, Mahalanobis normalizes by the uncertainty S.
+                # A large residual y that lies within the uncertainty ellipse of S will
+                # still result in a small Mahalanobis distance — correctly matching a
+                # track that has high uncertainty (e.g. just after creation or occlusion).
+                # The threshold self.max_distance (default 3.03) corresponds to the
+                # 99% confidence region of a 2D chi-squared distribution.
                 try:
                     distance_squared = y.T @ np.linalg.inv(S) @ y
                     distance = np.sqrt(distance_squared)
                 except np.linalg.LinAlgError:
-                    # If S is singular, fall back to Euclidean distance
+                    # S is singular (numerically degenerate covariance) — fall back to
+                    # plain Euclidean distance as a safe approximation
                     distance = np.linalg.norm(y)
 
                 distance_matrix[i, j] = distance
