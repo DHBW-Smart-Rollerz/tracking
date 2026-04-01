@@ -315,7 +315,7 @@ class MultiObjectTracker:
             for j, detection in enumerate(detections):
                 # ADD THIS: Hard Gating on Class ID
                 # If the detection class is different from track class, set distance to Infinity
-                # (Unless you want to allow class switching, but we just established that causes bugs)
+                # This is the reason why we don't to any type of class voting. 
 
                 if track.class_id != detection["class_id"]:
                     distance_matrix[i, j] = np.inf

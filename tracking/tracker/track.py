@@ -11,9 +11,6 @@ import numpy as np
 
 from .kalman_filter import KalmanFilter
 
-from collections import defaultdict
-
-
 # DEPRECATED: Global track ID counter (kept for backwards compatibility)
 # New code should pass track_id directly to Track.__init__()
 # Each MultiObjectTracker now maintains its own instance-level counter
@@ -120,10 +117,6 @@ class Track:
         # Store original detection for reference
         self.last_detection = detection
 
-        # Class history for majority voting
-        self.class_history = defaultdict(int)
-        self.class_history[detection["class_id"]] += 1
-        self.class_id = detection["class_id"]
 
     def predict(self, dt: float) -> None:
         """
@@ -170,13 +163,7 @@ class Track:
         self.hits += 1
         self.time_since_update = 0
 
-        # REPLACE strict assignment with Voting Logic
-        detected_class = detection["class_id"]
-        self.class_history[detected_class] += 1
-
-        # The class_id is the one with the highest count in history
-        # (This prevents a single flickering frame from changing the object type)
-        self.class_id = max(self.class_history, key=self.class_history.get)
+        self.class_id = detection["class_id"]
 
         self.score = detection["score"]
         self.width = detection.get("width", self.width)
