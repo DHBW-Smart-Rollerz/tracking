@@ -139,7 +139,7 @@ class MultiObjectTracker:
 
         # 2. Associate
         # Wir übergeben das Dict, aber die Logik innen muss angepasst werden
-        matched_ids, matched_dets, unmatched_ids, unmatched_dets = self._associate(
+        matched_ids, matched_dets, _, unmatched_dets = self._associate(
             detections
         )
         t2 = time.perf_counter()
@@ -148,16 +148,13 @@ class MultiObjectTracker:
         for track_id, det_idx in zip(matched_ids, matched_dets):
             self.tracks[track_id].measurement_update(detections[det_idx])
 
-        # 4. Mark missed (Zugriff über ID)
-        for track_id in unmatched_ids:
-            self.tracks[track_id].mark_missed()
         t3 = time.perf_counter()
 
-        # 5. Create new tracks
+        # 4. Create new tracks
         for det_idx in unmatched_dets:
             self._create_track(detections[det_idx])
 
-        # 6. Delete old tracks (Viel sicherer mit Dict!)
+        # 5. Delete old tracks (Viel sicherer mit Dict!)
         # Wir sammeln erst die IDs, die gelöscht werden müssen
         ids_to_delete = []
         for track_id, track in self.tracks.items():

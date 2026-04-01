@@ -172,18 +172,6 @@ class Track:
         # Store detection
         self.last_detection = detection
 
-    def mark_missed(self) -> None:
-        """
-        Mark that no detection was matched to this track in the current frame.
-
-        Should be called for tracks that weren't updated in the current frame.
-        Note: predict() already increments time_since_update, so this method
-        is mainly for clarity and future extensions.
-        """
-        # time_since_update is already incremented in predict()
-        # This method exists for clarity and potential future logic
-        pass
-
     def get_state(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the current state and covariance.
