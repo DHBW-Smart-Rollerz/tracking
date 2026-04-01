@@ -29,7 +29,8 @@ object_tracking_node:
 
     # --- Common parameters ---
     dt: 0.1             # Fallback time step (s), only used for first frame
-    publish_interval_ms: 15 # Neu: Publisher-Frequenz in Millisekunden
+    publish_interval_ms: 15 # Publisher-frequence (ms)
+    tracker_step_interval_ms: 40  # Min. interval (ms) for timer-based predict step when no detection arrives
     max_x: 5000.0       # Max valid x position (mm) - forward range
     max_y: 3000.0       # Max valid y position (mm) - lateral range
 

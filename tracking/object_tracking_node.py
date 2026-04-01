@@ -62,7 +62,8 @@ class ObjectTrackingNode(SmartyNode):
                 "export_timing_csv": None,
                 # Common parameters
                 "dt": None,
-                "publish_interval_ms": None,  # Neuer Parameter für den Timer
+                "publish_interval_ms": None,
+                "tracker_step_interval_ms": None,
                 "max_x": None,
                 "max_y": None,
                 # Object tracker parameters
@@ -129,6 +130,11 @@ class ObjectTrackingNode(SmartyNode):
         self.last_sign_time = None
         self.last_crossing_time = None
 
+        # Timestamp of last process_step() call per tracker (for timer-based stepping)
+        self.last_object_step_time = None
+        self.last_sign_step_time = None
+        self.last_crossing_step_time = None
+
         self._log_startup_info()
 
         # Timer für das Veröffentlichen mit fester Frequenz einrichten
@@ -194,16 +200,19 @@ class ObjectTrackingNode(SmartyNode):
         self.last_object_time = self._process_detection(
             msg, self.object_tracker, "object", self.last_object_time
         )
+        self.last_object_step_time = self.last_object_time
 
     def sign_detection_callback(self, msg: Float32MultiArray):
         self.last_sign_time = self._process_detection(
             msg, self.sign_tracker, "sign", self.last_sign_time
         )
+        self.last_sign_step_time = self.last_sign_time
 
     def crossing_detection_callback(self, msg: Float32MultiArray):
         self.last_crossing_time = self._process_detection(
             msg, self.crossing_tracker, "crossing", self.last_crossing_time
         )
+        self.last_crossing_step_time = self.last_crossing_time
 
     # -------------------------------------------------------------------------
     # Publisher Callback (Timer-basiert)
@@ -213,6 +222,23 @@ class ObjectTrackingNode(SmartyNode):
         """Called by the timer to publish the combined state of all trackers."""
         if not self._param("state") == NodeState.ACTIVE.value:
             return
+
+        # Step trackers that haven't received a detection recently
+        now = self.get_clock().now()
+        min_interval_ns = self._param("tracker_step_interval_ms") * 1_000_000
+        for tracker, last_step_attr in [
+            (self.object_tracker,   "last_object_step_time"),
+            (self.sign_tracker,     "last_sign_step_time"),
+            (self.crossing_tracker, "last_crossing_step_time"),
+        ]:
+            last_step = getattr(self, last_step_attr)
+            if last_step is None:
+                continue
+            elapsed_ns = (now - last_step).nanoseconds
+            if elapsed_ns >= min_interval_ns:
+                dt = min(elapsed_ns * 1e-9, 1.0)
+                tracker.process_step([], dt=dt)
+                setattr(self, last_step_attr, now)
 
         # 1. State Message vorbereiten
         state_msg = state_msgs.msg.State()
