@@ -146,7 +146,7 @@ class MultiObjectTracker:
 
         # 3. Update matched tracks (Zugriff über ID ist jetzt O(1) und sicher!)
         for track_id, det_idx in zip(matched_ids, matched_dets):
-            self.tracks[track_id].update(detections[det_idx])
+            self.tracks[track_id].measurement_update(detections[det_idx])
 
         # 4. Mark missed (Zugriff über ID)
         for track_id in unmatched_ids:

@@ -138,7 +138,7 @@ class Track:
         # Increment time since last update (will be reset if matched)
         self.time_since_update += 1
 
-    def update(self, detection: Dict) -> None:
+    def measurement_update(self, detection: Dict) -> None:
         """
         Update the track with a matched detection using Kalman Filter.
 
@@ -402,7 +402,7 @@ if __name__ == "__main__":
 
         if det is not None:
             # Update with measurement
-            track.update(det)
+            track.measurement_update(det)
             x_upd, y_upd = track.get_position()
             vx, vy = track.get_velocity()
             print(f"Detection at: ({det['center']['x']}, {det['center']['y']})")
