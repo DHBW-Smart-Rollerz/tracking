@@ -178,7 +178,7 @@ class ObjectTrackingNode(SmartyNode):
 
         # Tracker aktualisieren (gibt confirmed_tracks zurück, aber wir ignorieren
         # den Return-Wert hier, da der Timer sie asynchron abholt)
-        tracker.update(detections, dt=dt)
+        tracker.process_step(detections, dt=dt)
 
         if self._debug:
             stats = tracker.get_statistics()

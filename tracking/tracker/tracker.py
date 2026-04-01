@@ -105,7 +105,7 @@ class MultiObjectTracker:
         # Full timing log for post-run analysis (every frame, never truncated)
         self._timing_log: List[Dict] = []
 
-    def update(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
+    def process_step(self, detections: List[Dict], dt: float = 0.1) -> List[Dict]:
         """
         Main tracking update function. Call this once per frame with new detections.
 
