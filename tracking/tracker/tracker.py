@@ -371,26 +371,6 @@ class MultiObjectTracker:
         self.tracks[track_id] = new_track
         self.total_tracks_created += 1
 
-    def _delete_old_tracks(self) -> None:
-        """
-        Delete tracks that should no longer be tracked.
-
-        Tracks are deleted if:
-        - Not updated for too long (time_since_update > max_age)
-        - Outside valid tracking area
-        """
-        tracks_to_keep = []
-
-        for track in self.tracks:
-            if track.should_be_deleted(
-                max_age=self.max_age, max_x=self.max_x, max_y=self.max_y
-            ):
-                self.total_tracks_deleted += 1
-            else:
-                tracks_to_keep.append(track)
-
-        self.tracks = tracks_to_keep
-
     def get_confirmed_tracks(self) -> List[Dict]:
         """
         Get all confirmed tracks as dictionaries.
