@@ -167,8 +167,6 @@ class Track:
 
         self.score = detection["score"]
         self.width = detection.get("width", self.width)
-        self.last_detection = detection
-
         # Store detection
         self.last_detection = detection
 
