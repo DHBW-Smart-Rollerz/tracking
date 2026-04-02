@@ -397,7 +397,6 @@ if __name__ == "__main__":
             )
         else:
             # No detection
-            track.mark_missed()
             print(f"No detection (missed)")
 
         print(
