@@ -78,11 +78,7 @@ class MultiObjectTracker:
         self.sigma_pos_init = sigma_pos_init
         self.sigma_vel_init = sigma_vel_init
 
-        # Instance-level track ID counter (prevents ID conflicts between trackers)
-        self._next_track_id = id_offset
-
         # List of active tracks
-        # self.tracks: List[Track] = []
         self.tracks: Dict[int, Track] = {}
 
         # Statistics
@@ -91,6 +87,7 @@ class MultiObjectTracker:
         self.total_tracks_deleted = 0
 
         self._initial_id_offset = id_offset  # <--- Store this
+        # Instance-level track ID counter (prevents ID conflicts between trackers)
         self._next_track_id = id_offset
 
         # Performance timing statistics (running averages for real-time display)
