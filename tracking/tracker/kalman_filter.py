@@ -183,6 +183,26 @@ class KalmanFilter:
         return Q
 
     @staticmethod
+    def compute_r_at_distance(distance: float, r_base: float, d_ref: float) -> np.ndarray:
+        """
+        Compute distance-dependent measurement noise covariance matrix R.
+
+        Scales measurement noise linearly with distance, reflecting that camera-based
+        detections have higher positional uncertainty at greater ranges (σ ∝ d).
+
+        Args:
+            distance: Euclidean distance to the detection in mm
+            r_base: Base measurement noise std dev at reference distance [mm]
+            d_ref: Reference distance [mm] at which r_base applies
+
+        Returns:
+            R: Distance-scaled measurement noise covariance matrix (2x2)
+        """
+        r_scaled = r_base * (distance / d_ref)
+        r_scaled = max(r_base * 0.1, r_scaled)  # Floor at 10% of r_base
+        return np.array([[r_scaled**2, 0], [0, r_scaled**2]], dtype=np.float32)
+
+    @staticmethod
     def create_measurement_noise_matrix(r_pos: float = 100.0) -> np.ndarray:
         """
         Create measurement noise covariance matrix R.

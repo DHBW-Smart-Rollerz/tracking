@@ -35,6 +35,7 @@ _TRACKER_PARAM_KEYS = [
     "q_pos",
     "q_vel",
     "r_pos",
+    "r_dist_ref",
     "sigma_pos_init",
     "sigma_vel_init",
 ]
@@ -74,6 +75,7 @@ class ObjectTrackingNode(SmartyNode):
                 "object_q_pos": None,
                 "object_q_vel": None,
                 "object_r_pos": None,
+                "object_r_dist_ref": None,
                 "object_sigma_pos_init": None,
                 "object_sigma_vel_init": None,
                 # Sign tracker parameters
@@ -84,6 +86,7 @@ class ObjectTrackingNode(SmartyNode):
                 "sign_q_pos": None,
                 "sign_q_vel": None,
                 "sign_r_pos": None,
+                "sign_r_dist_ref": None,
                 "sign_sigma_pos_init": None,
                 "sign_sigma_vel_init": None,
                 # Crossing tracker parameters
@@ -94,6 +97,7 @@ class ObjectTrackingNode(SmartyNode):
                 "crossing_q_pos": None,
                 "crossing_q_vel": None,
                 "crossing_r_pos": None,
+                "crossing_r_dist_ref": None,
                 "crossing_sigma_pos_init": None,
                 "crossing_sigma_vel_init": None,
             },

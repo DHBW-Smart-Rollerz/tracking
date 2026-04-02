@@ -62,6 +62,7 @@ class Track:
         q_pos: float = None,
         q_vel: float = None,
         r_pos: float = None,
+        r_dist_ref: float = None,
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
     ):
@@ -77,7 +78,8 @@ class Track:
             track_id: Unique track ID (provided by tracker)
             q_pos: Process noise std dev for position [mm]
             q_vel: Process noise std dev for velocity [mm/s]
-            r_pos: Measurement noise std dev for position [mm]
+            r_pos: Measurement noise std dev for position [mm] (at reference distance)
+            r_dist_ref: Reference distance for R scaling [mm]
             sigma_pos_init: Initial position uncertainty [mm]
             sigma_vel_init: Initial velocity uncertainty [mm/s]
 
@@ -93,6 +95,10 @@ class Track:
 
         # Initialize Kalman Filter (no dt parameter anymore)
         self.kf = KalmanFilter()
+
+        # Store noise parameters for dynamic R computation
+        self.r_pos = r_pos
+        self.r_dist_ref = r_dist_ref
 
         # Create noise matrices
         self.Q = self.kf.create_process_noise_matrix(q_pos=q_pos, q_vel=q_vel)
@@ -117,6 +123,18 @@ class Track:
         # Store original detection for reference
         self.last_detection = detection
 
+
+    def get_R_at_distance(self, distance: float) -> np.ndarray:
+        """
+        Compute distance-dependent measurement noise matrix R.
+
+        Args:
+            distance: Euclidean distance to the detection in mm
+
+        Returns:
+            R: Distance-scaled measurement noise covariance matrix (2x2)
+        """
+        return self.kf.compute_r_at_distance(distance, self.r_pos, self.r_dist_ref)
 
     def predict(self, dt: float) -> None:
         """
@@ -154,9 +172,13 @@ class Track:
             [detection["center"]["x"], detection["center"]["y"]], dtype=np.float32
         )
 
+        # Compute distance-dependent R
+        d = np.linalg.norm(z)
+        R_dynamic = self.get_R_at_distance(d)
+
         # Update state and covariance using Kalman Filter
         self.state, self.covariance = self.kf.update(
-            s_predict=self.state, Sigma_predict=self.covariance, z=z, R=self.R
+            s_predict=self.state, Sigma_predict=self.covariance, z=z, R=R_dynamic
         )
 
         # Update track properties
@@ -338,7 +360,12 @@ if __name__ == "__main__":
     print(f"  Class: {detection1['class_id']}, Score: {detection1['score']}")
 
     # Create track (manually specify ID for test)
-    track = Track(detection1, track_id=0)
+    track = Track(
+        detection1, track_id=0,
+        q_pos=50.0, q_vel=100.0,
+        r_pos=100.0, r_dist_ref=1000.0,
+        sigma_pos_init=500.0, sigma_vel_init=1000.0,
+    )
 
     print(f"\nTrack created: {track}")
     print(f"  Initial state: {track.state}")

@@ -42,7 +42,8 @@ object_tracking_node:
     object_max_distance: 3.03   # Max Mahalanobis distance (chi² 99%, 2 DoF)
     object_q_pos: 50.0          # Process noise: position (mm)
     object_q_vel: 100.0         # Process noise: velocity (mm/s)
-    object_r_pos: 100.0         # Measurement noise: position (mm)
+    object_r_pos: 100.0          # Measurement noise: position (mm) at reference distance
+    object_r_dist_ref: 1100.0    # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     object_sigma_pos_init: 500.0    # Initial position uncertainty (mm)
     object_sigma_vel_init: 1000.0   # Initial velocity uncertainty (mm/s)
 
@@ -54,7 +55,8 @@ object_tracking_node:
     sign_max_distance: 3.03     # Max Mahalanobis distance (chi² 99%, 2 DoF)
     sign_q_pos: 25.0            # Lower process noise (static)
     sign_q_vel: 50.0            # Lowevelocity noise
-    sign_r_pos: 100.0           # Measurement noise: position (mm)
+    sign_r_pos: 100.0            # Measurement noise: position (mm) at reference distance
+    sign_r_dist_ref: 1100.0      # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     sign_sigma_pos_init: 300.0  # Lower initial uncertainty
     sign_sigma_vel_init: 500.0  # Lower initial velocity uncertainty
 
@@ -67,5 +69,6 @@ object_tracking_node:
     crossing_q_pos: 20.0        # Very low (lines barely move)
     crossing_q_vel: 30.0
     crossing_r_pos: 80.0
+    crossing_r_dist_ref: 1100.0  # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     crossing_sigma_pos_init: 300.0
     crossing_sigma_vel_init: 300.0

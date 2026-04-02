@@ -39,6 +39,7 @@ class MultiObjectTracker:
         q_pos: float = None,
         q_vel: float = None,
         r_pos: float = None,
+        r_dist_ref: float = None,
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
         id_offset: int = None,
@@ -75,6 +76,7 @@ class MultiObjectTracker:
         self.q_pos = q_pos
         self.q_vel = q_vel
         self.r_pos = r_pos
+        self.r_dist_ref = r_dist_ref
         self.sigma_pos_init = sigma_pos_init
         self.sigma_vel_init = sigma_vel_init
 
@@ -297,17 +299,6 @@ class MultiObjectTracker:
             # current state s = [x, y, vx, vy] and returns the expected [x, y].
             z_pred = track.get_predicted_measurement()
 
-            # Innovation covariance S = H @ Σ @ H^T + R
-            # S describes the total uncertainty of where we expect the measurement to be.
-            # It combines:
-            #   - Σ_pos (top-left 2x2 of the state covariance): how uncertain is the
-            #     Kalman filter about the current position estimate?
-            #   - R: how noisy is the detector (measurement noise)?
-            # The larger S is, the more "spread out" the acceptance region becomes.
-            # This is the key advantage of Mahalanobis over Euclidean distance:
-            # a track with high uncertainty will accept detections from further away.
-            S = track.covariance[0:2, 0:2] + track.R
-
             for j, detection in enumerate(detections):
                 # All detections passed here belong to the same class as this track
                 # (guaranteed by the per-class grouping in _associate).
@@ -318,6 +309,11 @@ class MultiObjectTracker:
                     [detection["center"]["x"], detection["center"]["y"]],
                     dtype=np.float32,
                 )
+
+                # Distance-dependent innovation covariance S = H @ Σ @ H^T + R(d)
+                d = np.linalg.norm(z)
+                R_dynamic = track.get_R_at_distance(d)
+                S = track.covariance[0:2, 0:2] + R_dynamic
 
                 # Innovation (residual): difference between actual and predicted measurement
                 # y = z - ẑ   (how far off was the prediction?)
@@ -359,6 +355,7 @@ class MultiObjectTracker:
             q_pos=self.q_pos,
             q_vel=self.q_vel,
             r_pos=self.r_pos,
+            r_dist_ref=self.r_dist_ref,
             sigma_pos_init=self.sigma_pos_init,
             sigma_vel_init=self.sigma_vel_init,
         )
