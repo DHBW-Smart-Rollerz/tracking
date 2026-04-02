@@ -470,7 +470,7 @@ class MultiObjectTracker:
             reset_id_counter: If True, reset the ID counter to id_offset (default: True)
                              Set to False if you want to preserve continuous ID numbering
         """
-        self.tracks = []
+        self.tracks = {}
         self.frame_count = 0
         self.total_tracks_created = 0
         self.total_tracks_deleted = 0
