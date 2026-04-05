@@ -43,6 +43,7 @@ class MultiObjectTracker:
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
         id_offset: int = None,
+        duplicate_distance: float = 0.0,
     ):
         """
         Initialize the Multi-Object Tracker.
@@ -79,6 +80,7 @@ class MultiObjectTracker:
         self.r_dist_ref = r_dist_ref
         self.sigma_pos_init = sigma_pos_init
         self.sigma_vel_init = sigma_vel_init
+        self.duplicate_distance = duplicate_distance
 
         # List of active tracks
         self.tracks: Dict[int, Track] = {}
@@ -98,6 +100,7 @@ class MultiObjectTracker:
             "associate": [],
             "update": [],
             "create_delete": [],
+            "deduplicate": [],
             "total": [],
         }
         self._timing_window = 100  # Keep last N measurements for averaging
@@ -139,9 +142,7 @@ class MultiObjectTracker:
 
         # 2. Associate
         # Wir übergeben das Dict, aber die Logik innen muss angepasst werden
-        matched_ids, matched_dets, _, unmatched_dets = self._associate(
-            detections
-        )
+        matched_ids, matched_dets, _, unmatched_dets = self._associate(detections)
         t2 = time.perf_counter()
 
         # 3. Update matched tracks (Zugriff über ID ist jetzt O(1) und sicher!)
@@ -167,13 +168,19 @@ class MultiObjectTracker:
             self.total_tracks_deleted += 1
         t4 = time.perf_counter()
 
+        # 6. Deduplicate: remove duplicate tracks of the same class that are too close
+        if self.duplicate_distance > 0:
+            self._deduplicate_tracks()
+        t5 = time.perf_counter()
+
         # Record timing (in microseconds for precision)
         timings = {
             "predict": (t1 - t0) * 1e6,
             "associate": (t2 - t1) * 1e6,
             "update": (t3 - t2) * 1e6,
             "create_delete": (t4 - t3) * 1e6,
-            "total": (t4 - t0) * 1e6,
+            "deduplicate": (t5 - t4) * 1e6,
+            "total": (t5 - t0) * 1e6,
         }
         for key, value in timings.items():
             history = self._timing_history[key]
@@ -190,6 +197,7 @@ class MultiObjectTracker:
                 "associate_us": timings["associate"],
                 "update_us": timings["update"],
                 "create_delete_us": timings["create_delete"],
+                "deduplicate_us": timings["deduplicate"],
                 "total_us": timings["total"],
                 "num_tracks": len(self.tracks),
                 "num_detections": len(detections),
@@ -364,6 +372,64 @@ class MultiObjectTracker:
         # Neu: Speichern im Dictionary unter der ID
         self.tracks[track_id] = new_track
         self.total_tracks_created += 1
+
+    def _deduplicate_tracks(self) -> None:
+        """
+        Remove duplicate tracks of the same class that are too close together.
+
+        Track-level NMS (Non-Maximum Suppression): for each pair of tracks with
+        the same class_id, if their Euclidean distance is below duplicate_distance,
+        the weaker track is deleted. "Stronger" = more hits; tie-break = lower
+        position uncertainty.
+        """
+        ids_to_delete: Set[int] = set()
+        track_ids = list(self.tracks.keys())
+
+        for i in range(len(track_ids)):
+            id_a = track_ids[i]
+            if id_a in ids_to_delete:
+                continue
+            track_a = self.tracks[id_a]
+
+            for j in range(i + 1, len(track_ids)):
+                id_b = track_ids[j]
+                if id_b in ids_to_delete:
+                    continue
+                track_b = self.tracks[id_b]
+
+                # Only compare tracks of the same class
+                if track_a.class_id != track_b.class_id:
+                    continue
+
+                # Euclidean distance between positions
+                dx = track_a.state[0] - track_b.state[0]
+                dy = track_a.state[1] - track_b.state[1]
+                dist = np.sqrt(dx * dx + dy * dy)
+
+                if dist < self.duplicate_distance:
+                    # Keep the stronger track (more hits, lower uncertainty as tie-break)
+                    if track_a.hits > track_b.hits:
+                        loser = id_b
+                    elif track_b.hits > track_a.hits:
+                        loser = id_a
+                    else:
+                        # Tie-break: lower position uncertainty wins
+                        if (
+                            track_a.get_position_uncertainty()
+                            <= track_b.get_position_uncertainty()
+                        ):
+                            loser = id_b
+                        else:
+                            loser = id_a
+
+                    ids_to_delete.add(loser)
+                    # If track_a was the loser, stop comparing it
+                    if loser == id_a:
+                        break
+
+        for track_id in ids_to_delete:
+            del self.tracks[track_id]
+            self.total_tracks_deleted += 1
 
     def get_confirmed_tracks(self) -> List[Dict]:
         """
