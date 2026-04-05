@@ -100,6 +100,12 @@ class TrackingVisualizationNode(SmartyNode):
         )
         self.cv_bridge = cv_bridge.CvBridge()
 
+        # Track timeout handling (Neu: Basiert auf Detections statt State)
+        self.last_obj_det_time = None
+        self.last_sign_det_time = None
+        self.last_cross_det_time = None
+        self.track_timeout_sec = 0.5
+
         # Storage for latest messages
         self.latest_image = None
         self.latest_object_detections = []
@@ -201,12 +207,15 @@ class TrackingVisualizationNode(SmartyNode):
 
     def object_detection_callback(self, msg: Float32MultiArray):
         self.latest_object_detections = self.parse_detections(msg)
+        self.last_obj_det_time = self.get_clock().now()
 
     def sign_detection_callback(self, msg: Float32MultiArray):
         self.latest_sign_detections = self.parse_detections(msg)
+        self.last_sign_det_time = self.get_clock().now()
 
     def crossing_detection_callback(self, msg: Float32MultiArray):
         self.latest_crossing_detections = self.parse_detections(msg)
+        self.last_cross_det_time = self.get_clock().now()
 
     def state_callback(self, msg: state_msgs.msg.State):
         """
@@ -310,7 +319,7 @@ class TrackingVisualizationNode(SmartyNode):
                 center_pixel = self.coord_transform.world_to_camera(
                     center_point, input_unit=Unit.MILLIMETERS
                 )[0]
-                width_pixels = int(track["width"] * 0.1)
+                width_pixels = max(20, int(track["width"] * 0.1))
                 height_pixels = int(width_pixels * 1.3)
                 center_x, center_y = int(center_pixel[0]), int(center_pixel[1])
                 return (
@@ -456,9 +465,11 @@ class TrackingVisualizationNode(SmartyNode):
 
         if is_sign:
             draw.rectangle([(xmin, ymin), (xmax, ymax)], outline=color, width=2)
-            draw.rectangle(
-                [(xmin + 3, ymin + 3), (xmax - 3, ymax - 3)], outline=color, width=1
-            )
+            # Crash-Schutz: Inneres Rechteck nur zeichnen, wenn Platz dafür ist
+            if (xmax - xmin) >= 6 and (ymax - ymin) >= 6:
+                draw.rectangle(
+                    [(xmin + 3, ymin + 3), (xmax - 3, ymax - 3)], outline=color, width=1
+                )
         else:
             draw.rectangle([(xmin, ymin), (xmax, ymax)], outline=color, width=3)
 
@@ -587,13 +598,23 @@ class TrackingVisualizationNode(SmartyNode):
             self.fps = (self.fps * 0.9) + ((1.0 / time_diff) * 0.1)
         self.last_frame_time = current_time
 
-        # Zentrales Timeout-Handling: Wenn für X Sekunden keine State-Message kam, Listen leeren
-        if self.last_state_time is not None:
+        # Zentrales Timeout-Handling: Wenn für X Sekunden keine Detections kamen, Listen leeren
+        if self.last_obj_det_time is not None:
             if (
-                (current_time - self.last_state_time).nanoseconds / 1e9
+                (current_time - self.last_obj_det_time).nanoseconds / 1e9
             ) > self.track_timeout_sec:
                 self.latest_object_tracks = []
+
+        if self.last_sign_det_time is not None:
+            if (
+                (current_time - self.last_sign_det_time).nanoseconds / 1e9
+            ) > self.track_timeout_sec:
                 self.latest_sign_tracks = []
+
+        if self.last_cross_det_time is not None:
+            if (
+                (current_time - self.last_cross_det_time).nanoseconds / 1e9
+            ) > self.track_timeout_sec:
                 self.latest_crossing_tracks = []
 
         try:
@@ -668,7 +689,7 @@ class TrackingVisualizationNode(SmartyNode):
             legend_y = 40 + padding
             draw.text(
                 (10 + padding, legend_y),
-                "O# = Object | S# = Sign | C# = Crossing 123",
+                "O# = Object | S# = Sign | C# = Crossing Christian",
                 fill="white",
                 font=font_normal,
             )
