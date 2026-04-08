@@ -39,11 +39,11 @@ object_tracking_node:
     object_max_age: 32          # Max frames without update before deletion
     object_min_hits: 3          # Min successful updates for confirmation
     object_min_age: 3           # Min frames for confirmation
-    object_max_distance: 3.03   # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    object_max_distance: 4.5   # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     object_q_pos: 50.0          # Process noise: position (mm)
     object_q_vel: 180.0         # Process noise: velocity (mm/s)
     object_r_pos: 100.0          # Measurement noise: position (mm) at reference distance
-    object_r_dist_ref: 1100.0    # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
+    object_r_dist_ref: 1400.0    # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     object_sigma_pos_init: 100.0    # Initial position uncertainty (mm)
     object_sigma_vel_init: 500.0   # Initial velocity uncertainty (mm/s)
 
@@ -54,11 +54,11 @@ object_tracking_node:
     sign_max_age: 35            # Max frames without update before deletion
     sign_min_hits: 2            # Min successful updates for confirmation
     sign_min_age: 2             # Min frames for confirmation
-    sign_max_distance: 3.03     # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    sign_max_distance: 6    # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     sign_q_pos: 50.0            # Process noise: position (mm)
     sign_q_vel: 250.0           # Process noise: velocity (mm/s) — covers apparent velocity changes due to ego-motion
     sign_r_pos: 150.0           # Measurement noise: position (mm) at reference distance
-    sign_r_dist_ref: 1100.0     # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
+    sign_r_dist_ref: 1400.0     # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     sign_sigma_pos_init: 100.0  # Initial position uncertainty (mm)
     sign_sigma_vel_init: 500.0  # Initial velocity uncertainty (mm/s) — high because ego-velocity at track creation is unknown
 
@@ -67,7 +67,7 @@ object_tracking_node:
     crossing_max_age: 3         # Max frames without update before deletion
     crossing_min_hits: 1        # Min successful updates for confirmation
     crossing_min_age: 0         # Min frames for confirmation (0 = confirm as soon as min_hits is reached)
-    crossing_max_distance: 3.03 # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    crossing_max_distance: 4.5 # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     crossing_q_pos: 20.0        # Process noise: position (mm)
     crossing_q_vel: 30.0        # Process noise: velocity (mm/s)
     crossing_r_pos: 80.0        # Measurement noise: position (mm) at reference distance
