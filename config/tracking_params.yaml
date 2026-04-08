@@ -10,7 +10,7 @@ object_tracking_node:
     # --- Node settings ---
     debug: false
     state: 1  # NodeState.ACTIVE
-    export_timing_csv: false  # CSV timing export on shutdown (default: off)
+    export_timing_csv: true  # CSV timing export on shutdown (default: off)
 
     # --- Subscriber topics ---
     image_subscriber: "/camera/image/undistorted"
@@ -36,12 +36,12 @@ object_tracking_node:
 
     # --- Object tracker (moving objects: cars, pedestrians) ---
     # IDs: 0+
-    object_max_age: 15          # Max frames without update before deletion
+    object_max_age: 30          # Max frames without update before deletion
     object_min_hits: 3          # Min successful updates for confirmation
     object_min_age: 3           # Min frames for confirmation
     object_max_distance: 3.03   # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     object_q_pos: 50.0          # Process noise: position (mm)
-    object_q_vel: 100.0         # Process noise: velocity (mm/s)
+    object_q_vel: 200.0         # Process noise: velocity (mm/s)
     object_r_pos: 100.0          # Measurement noise: position (mm) at reference distance
     object_r_dist_ref: 1100.0    # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     object_sigma_pos_init: 100.0    # Initial position uncertainty (mm)
@@ -51,13 +51,13 @@ object_tracking_node:
     # IDs: 10000+
     # Note: Without ego-motion compensation, signs have apparent velocity in vehicle frame
     # (e.g. a sign being passed on the side moves with roughly -v_ego in vehicle coordinates).
-    sign_max_age: 15            # Max frames without update before deletion
+    sign_max_age: 35           # Max frames without update before deletion
     sign_min_hits: 2            # Min successful updates for confirmation
     sign_min_age: 2             # Min frames for confirmation
     sign_max_distance: 3.03     # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     sign_q_pos: 50.0            # Process noise: position (mm)
-    sign_q_vel: 120.0           # Process noise: velocity (mm/s) — covers apparent velocity changes due to ego-motion
-    sign_r_pos: 100.0           # Measurement noise: position (mm) at reference distance
+    sign_q_vel: 250.0           # Process noise: velocity (mm/s) — covers apparent velocity changes due to ego-motion
+    sign_r_pos: 150.0           # Measurement noise: position (mm) at reference distance
     sign_r_dist_ref: 1100.0     # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     sign_sigma_pos_init: 100.0  # Initial position uncertainty (mm)
     sign_sigma_vel_init: 500.0  # Initial velocity uncertainty (mm/s) — high because ego-velocity at track creation is unknown
