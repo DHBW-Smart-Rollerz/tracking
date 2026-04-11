@@ -20,7 +20,11 @@ Modus 'detection':  liest /object_detection/object + /object_detection/sign
 Modus 'tracking':   liest /tracking/state
 """
 
+import csv
+import json
 import math
+import os
+import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 
@@ -184,7 +188,7 @@ class EvaluationNode(Node):
     """
 
     def __init__(self):
-        super().__init__("tracking_evaluate_node")
+        super().__init__("evaluation_node")
 
         # ---- Parameter ----
         self.declare_parameter("annotations", "")
@@ -195,6 +199,9 @@ class EvaluationNode(Node):
         self.declare_parameter("object_det_topic", "/object_detection/object")
         self.declare_parameter("sign_det_topic", "/object_detection/sign")
         self.declare_parameter("tracking_topic", "/tracking/state")
+        self.declare_parameter(
+            "output_dir", "~/smarty_workspace/src/tracking/evaluation_results2"
+        )
 
         ann_path = self.get_parameter("annotations").value
         self.mode = self.get_parameter("mode").value
@@ -413,36 +420,19 @@ class EvaluationNode(Node):
     # Ergebnisausgabe
     # -------------------------------------------------------------------------
 
-    def print_results(self):
-        """Gibt die vollständige Auswertung auf der Konsole aus."""
-        sep = "=" * 72
-        print(f"\n{sep}")
-        print(f"  AUSWERTUNGSERGEBNIS")
-        print(f"  Modus:           {self.mode.upper()}")
-        print(f"  Match-Schwelle:  {self.threshold_px:.0f} px")
-        print(f"  Frame-Step:      jeder {self.frame_step}. Frame")
-        print(f"  Ausgewertete Frames: {self.evaluated_frames}")
-        print(sep)
+    def _compute_results(self) -> tuple[list[dict], dict]:
+        """
+        Berechnet per-Klasse- und Gesamt-Metriken aus self.metrics.
 
-        if self.evaluated_frames == 0:
-            print(
-                "  WARNUNG: Keine Frames ausgewertet. Topics korrekt? Bag vollständig abgespielt?"
-            )
-            print(sep)
-            return
-
-        print(
-            f"  {'Klasse':<28} {'TP':>5} {'FP':>5} {'FN':>5} "
-            f"{'Prec':>7} {'Rec':>7} {'F1':>7} {'Err[px]':>9}"
-        )
-        print("-" * 72)
-
+        Returns:
+            per_class: Liste von Dicts (eine Zeile pro Klasse)
+            totals:    Dict mit aggregierten Gesamtwerten
+        """
+        per_class: list[dict] = []
         total_tp = total_fp = total_fn = 0
         all_distances: list[float] = []
 
-        # Alle Klassen ausgeben, die in GT oder Predictions vorkamen
-        all_class_ids = sorted(self.metrics.keys())
-        for cid in all_class_ids:
+        for cid in sorted(self.metrics.keys()):
             m = self.metrics[cid]
             tp, fp, fn = m["tp"], m["fp"], m["fn"]
             dists = m["distances"]
@@ -454,12 +444,20 @@ class EvaluationNode(Node):
                 if (precision + recall) > 0
                 else 0.0
             )
-            mean_err = sum(dists) / len(dists) if dists else float("nan")
+            mean_err = sum(dists) / len(dists) if dists else None
 
-            name = CLASS_ID_TO_NAME.get(cid, f"class_{cid}")
-            print(
-                f"  {name:<28} {tp:>5} {fp:>5} {fn:>5} "
-                f"{precision:>7.3f} {recall:>7.3f} {f1:>7.3f} {mean_err:>9.1f}"
+            per_class.append(
+                {
+                    "class_id": cid,
+                    "class_name": CLASS_ID_TO_NAME.get(cid, f"class_{cid}"),
+                    "tp": tp,
+                    "fp": fp,
+                    "fn": fn,
+                    "precision": round(precision, 4),
+                    "recall": round(recall, 4),
+                    "f1": round(f1, 4),
+                    "mean_err_px": round(mean_err, 2) if mean_err is not None else None,
+                }
             )
 
             total_tp += tp
@@ -467,8 +465,6 @@ class EvaluationNode(Node):
             total_fn += fn
             all_distances.extend(dists)
 
-        # Gesamtergebnis
-        print("-" * 72)
         total_precision = (
             total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
         )
@@ -481,20 +477,131 @@ class EvaluationNode(Node):
             else 0.0
         )
         total_mean_err = (
-            sum(all_distances) / len(all_distances) if all_distances else float("nan")
+            sum(all_distances) / len(all_distances) if all_distances else None
         )
 
+        totals = {
+            "tp": total_tp,
+            "fp": total_fp,
+            "fn": total_fn,
+            "precision": round(total_precision, 4),
+            "recall": round(total_recall, 4),
+            "f1": round(total_f1, 4),
+            "mean_err_px": (
+                round(total_mean_err, 2) if total_mean_err is not None else None
+            ),
+        }
+        return per_class, totals
+
+    def print_results(self):
+        """Gibt die vollständige Auswertung auf der Konsole aus und speichert CSV + JSON."""
+        sep = "=" * 72
+        print(f"\n{sep}")
+        print(f"  AUSWERTUNGSERGEBNIS")
+        print(f"  Modus:               {self.mode.upper()}")
+        print(f"  Match-Schwelle:      {self.threshold_px:.0f} px")
+        print(f"  Frame-Step:          jeder {self.frame_step}. Frame")
+        print(f"  Ausgewertete Frames: {self.evaluated_frames}")
+        print(sep)
+
+        if self.evaluated_frames == 0:
+            print(
+                "  WARNUNG: Keine Frames ausgewertet. Topics korrekt? Bag vollständig abgespielt?"
+            )
+            print(sep)
+            return
+
+        per_class, totals = self._compute_results()
+
+        # ---- Konsole ----
         print(
-            f"  {'GESAMT':<28} {total_tp:>5} {total_fp:>5} {total_fn:>5} "
-            f"{total_precision:>7.3f} {total_recall:>7.3f} {total_f1:>7.3f} {total_mean_err:>9.1f}"
+            f"  {'Klasse':<28} {'TP':>5} {'FP':>5} {'FN':>5} "
+            f"{'Prec':>7} {'Rec':>7} {'F1':>7} {'Err[px]':>9}"
+        )
+        print("-" * 72)
+        for row in per_class:
+            err_str = (
+                f"{row['mean_err_px']:>9.1f}"
+                if row["mean_err_px"] is not None
+                else f"{'—':>9}"
+            )
+            print(
+                f"  {row['class_name']:<28} {row['tp']:>5} {row['fp']:>5} {row['fn']:>5} "
+                f"{row['precision']:>7.3f} {row['recall']:>7.3f} {row['f1']:>7.3f} {err_str}"
+            )
+
+        print("-" * 72)
+        total_err_str = (
+            f"{totals['mean_err_px']:>9.1f}"
+            if totals["mean_err_px"] is not None
+            else f"{'—':>9}"
+        )
+        print(
+            f"  {'GESAMT':<28} {totals['tp']:>5} {totals['fp']:>5} {totals['fn']:>5} "
+            f"{totals['precision']:>7.3f} {totals['recall']:>7.3f} {totals['f1']:>7.3f} {total_err_str}"
         )
         print(sep)
         print("  F1      = Harmonisches Mittel aus Precision und Recall")
+        print("  Err[px] = Mittlere Pixeldistanz der gematchten Paare")
         print(
-            "  Err[px] = Mittlere Pixeldistanz der gematchten Paare (Lokalisierungsgenauigkeit)"
+            f"  TP={totals['tp']}, FP={totals['fp']} (Geister), FN={totals['fn']} (übersehen)"
         )
-        print(f"  TP={total_tp}, FP={total_fp} (Geister), FN={total_fn} (übersehen)")
         print(sep + "\n")
+
+        # ---- Dateien speichern ----
+        self._save_results(per_class, totals)
+
+    def _save_results(self, per_class: list[dict], totals: dict):
+        """Speichert Ergebnisse als CSV und JSON in output_dir."""
+        output_dir = os.path.expanduser(self.get_parameter("output_dir").value)
+        os.makedirs(output_dir, exist_ok=True)
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        basename = f"eval_{self.mode}_{timestamp}"
+
+        # ---- CSV (per Klasse + Gesamtzeile) ----
+        csv_path = os.path.join(output_dir, f"{basename}.csv")
+        fieldnames = [
+            "class_id",
+            "class_name",
+            "tp",
+            "fp",
+            "fn",
+            "precision",
+            "recall",
+            "f1",
+            "mean_err_px",
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(per_class)
+            # Gesamtzeile
+            writer.writerow(
+                {
+                    "class_id": "TOTAL",
+                    "class_name": "GESAMT",
+                    **totals,
+                }
+            )
+        print(f"  CSV gespeichert:  {csv_path}")
+
+        # ---- JSON (vollständig mit Metadaten) ----
+        json_path = os.path.join(output_dir, f"{basename}.json")
+        result_doc = {
+            "meta": {
+                "mode": self.mode,
+                "threshold_px": self.threshold_px,
+                "frame_step": self.frame_step,
+                "evaluated_frames": self.evaluated_frames,
+                "timestamp": timestamp,
+            },
+            "per_class": per_class,
+            "total": totals,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result_doc, f, indent=2, ensure_ascii=False)
+        print(f"  JSON gespeichert: {json_path}\n")
 
 
 # ---------------------------------------------------------------------------
