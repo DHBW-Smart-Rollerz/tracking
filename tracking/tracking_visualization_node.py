@@ -626,7 +626,7 @@ class TrackingVisualizationNode(SmartyNode):
                 font_normal = ImageFont.truetype(
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", self.text_size
                 )
-            except:
+            except Exception:
                 font_large = font_normal = ImageFont.load_default()
 
             for track in self.latest_crossing_tracks:
