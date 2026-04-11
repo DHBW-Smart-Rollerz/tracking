@@ -32,6 +32,7 @@ setup(
         "console_scripts": [
             f"object_tracking_node = {package_name}.object_tracking_node:main",
             f"tracking_visualization_node = {package_name}.tracking_visualization_node:main",
+            f"evaluate_node = {package_name}.evaluate_node:main",
         ],
     },
 )
