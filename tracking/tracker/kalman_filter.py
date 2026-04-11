@@ -124,7 +124,12 @@ class KalmanFilter:
 
         # Kalman Gain
         # K determines how much we trust the measurement vs. the prediction
-        K = Sigma_predict @ self.H.T @ np.linalg.inv(S)
+        try:
+            K = Sigma_predict @ self.H.T @ np.linalg.inv(S)
+        except np.linalg.LinAlgError:
+            # S is singular — skip the update and return the prediction unchanged.
+            # This keeps the node alive; the track will self-correct on the next frame.
+            return s_predict, Sigma_predict
 
         # Innovation (residual): Difference between measurement and prediction
         # y = z_measured - z_predicted, where z_predicted = H @ s_predict
