@@ -61,6 +61,7 @@ class ObjectTrackingNode(SmartyNode):
                 "state": None,
                 "debug": None,
                 "export_timing_csv": None,
+                "crossing_tracking_enabled": None,
                 # Common parameters
                 "dt": None,
                 "publish_interval_ms": None,
@@ -127,7 +128,10 @@ class ObjectTrackingNode(SmartyNode):
         # Initialize three separate trackers
         self.object_tracker = self._create_tracker("object", id_offset=0)
         self.sign_tracker = self._create_tracker("sign", id_offset=10000)
-        self.crossing_tracker = self._create_tracker("crossing", id_offset=20000)
+        if self._param("crossing_tracking_enabled"):
+            self.crossing_tracker = self._create_tracker("crossing", id_offset=20000)
+        else:
+            self.crossing_tracker = None
 
         # Timestamp tracking for dynamic dt calculation
         self.last_object_time = None
@@ -213,6 +217,8 @@ class ObjectTrackingNode(SmartyNode):
         self.last_sign_step_time = self.last_sign_time
 
     def crossing_detection_callback(self, msg: Float32MultiArray):
+        if self.crossing_tracker is None:
+            return
         self.last_crossing_time = self._process_detection(
             msg, self.crossing_tracker, "crossing", self.last_crossing_time
         )
@@ -230,11 +236,13 @@ class ObjectTrackingNode(SmartyNode):
         # Step trackers that haven't received a detection recently
         now = self.get_clock().now()
         min_interval_ns = self._param("tracker_step_interval_ms") * 1_000_000
-        for tracker, last_step_attr in [
+        active_trackers = [
             (self.object_tracker,   "last_object_step_time"),
             (self.sign_tracker,     "last_sign_step_time"),
-            (self.crossing_tracker, "last_crossing_step_time"),
-        ]:
+        ]
+        if self.crossing_tracker is not None:
+            active_trackers.append((self.crossing_tracker, "last_crossing_step_time"))
+        for tracker, last_step_attr in active_trackers:
             last_step = getattr(self, last_step_attr)
             if last_step is None:
                 continue
@@ -251,7 +259,8 @@ class ObjectTrackingNode(SmartyNode):
         all_confirmed_tracks = []
         all_confirmed_tracks.extend(self.object_tracker.get_confirmed_tracks())
         all_confirmed_tracks.extend(self.sign_tracker.get_confirmed_tracks())
-        all_confirmed_tracks.extend(self.crossing_tracker.get_confirmed_tracks())
+        if self.crossing_tracker is not None:
+            all_confirmed_tracks.extend(self.crossing_tracker.get_confirmed_tracks())
 
         # 3. Dictionaries in TrackedObject.msg umwandeln
         for obj in all_confirmed_tracks:
@@ -353,11 +362,13 @@ class ObjectTrackingNode(SmartyNode):
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
-            for tracker_name, tracker in [
+            trackers_to_export = [
                 ("object", self.object_tracker),
                 ("sign", self.sign_tracker),
-                ("crossing", self.crossing_tracker),
-            ]:
+            ]
+            if self.crossing_tracker is not None:
+                trackers_to_export.append(("crossing", self.crossing_tracker))
+            for tracker_name, tracker in trackers_to_export:
                 for entry in tracker.get_timing_log():
                     row = {"tracker": tracker_name}
                     row.update(entry)
@@ -372,9 +383,13 @@ class ObjectTrackingNode(SmartyNode):
     # -------------------------------------------------------------------------
 
     def _log_startup_info(self):
+        crossing_enabled = self._param("crossing_tracking_enabled")
+        num_trackers = 3 if crossing_enabled else 2
         self.get_logger().info(
-            "ObjectTrackingNode initialized with 3 trackers (Timer-based publishing)"
+            f"ObjectTrackingNode initialized with {num_trackers} trackers (Timer-based publishing)"
         )
+        if not crossing_enabled:
+            self.get_logger().info("Crossing tracker disabled (crossing_tracking_enabled: false)")
         self.get_logger().info("Subscribed topics:")
         for key in self.subscribed_topics:
             self.get_logger().info(f"  {key}: {self._param(key)}")
@@ -415,11 +430,13 @@ def main(args=None):
         except Exception as e:
             node.get_logger().error(f"Failed to export timing data: {e}")
 
-        for name, tracker in [
+        trackers_for_stats = [
             ("Object", node.object_tracker),
             ("Sign", node.sign_tracker),
-            ("Crossing", node.crossing_tracker),
-        ]:
+        ]
+        if node.crossing_tracker is not None:
+            trackers_for_stats.append(("Crossing", node.crossing_tracker))
+        for name, tracker in trackers_for_stats:
             node._log_tracker_stats(name, tracker.get_statistics())
             node.get_logger().info("-" * 60)
 

@@ -11,6 +11,7 @@ object_tracking_node:
     debug: false
     state: 1  # NodeState.ACTIVE
     export_timing_csv: false  # CSV timing export on shutdown (default: off)
+    crossing_tracking_enabled: false  # set to false to disable the crossing tracker entirely
 
     # --- Subscriber topics ---
     image_subscriber: "/camera/image/undistorted"

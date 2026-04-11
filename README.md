@@ -2,7 +2,7 @@
 
 The **Object Tracking Node** tracks detected objects, traffic signs, and intersection lane markings over time, providing stable track IDs and velocity estimates to the planner.
 
-Internally, three independent Kalman filter-based trackers run in parallel (SORT architecture: Predict → Associate → Update → Create/Delete). Incoming detections are associated with existing tracks using **Mahalanobis distance** gating and the Hungarian algorithm. All three trackers publish their confirmed tracks bundled into a single state topic.
+Internally, two or three independent Kalman filter-based trackers run in parallel (SORT architecture: Predict → Associate → Update → Create/Delete). Incoming detections are associated with existing tracks using **Mahalanobis distance** gating and the Hungarian algorithm. All confirmed tracks are bundled into a single state topic. The crossing tracker can be disabled via `crossing_tracking_enabled: false`.
 
 ---
 
@@ -14,7 +14,7 @@ Internally, three independent Kalman filter-based trackers run in parallel (SORT
 |---|---|---|
 | `/object_detection/object` | `Float32MultiArray` | Moving objects (vehicles, pedestrians) |
 | `/object_detection/sign` | `Float32MultiArray` | Traffic signs |
-| `/crossing_detection/result` | `Float32MultiArray` | Intersection lane markings |
+| `/crossing_detection/result` | `Float32MultiArray` | Intersection lane markings *(only if `crossing_tracking_enabled: true`)* |
 
 **Detection data structure (flattened array, 6 values per detection):**
 ```text
@@ -115,6 +115,7 @@ All parameters are configured in [`config/tracking_params.yaml`](config/tracking
 | `tracker_step_interval_ms` | 40 | Minimum interval (ms) for a timer-triggered predict step when no detection arrives |
 | `max_x` | 3000 | Maximum valid x-position (mm) — tracks outside this range are deleted |
 | `max_y` | 2000 | Maximum valid y-position (mm) |
+| `crossing_tracking_enabled` | true | Enable/disable the crossing tracker; set to `false` to skip crossing detection entirely |
 
 ### Per-Tracker Parameters (prefix: `object_` / `sign_` / `crossing_`)
 
