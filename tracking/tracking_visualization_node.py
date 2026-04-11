@@ -598,23 +598,13 @@ class TrackingVisualizationNode(SmartyNode):
             self.fps = (self.fps * 0.9) + ((1.0 / time_diff) * 0.1)
         self.last_frame_time = current_time
 
-        # Zentrales Timeout-Handling: Wenn für X Sekunden keine Detections kamen, Listen leeren
-        if self.last_obj_det_time is not None:
+        # Central timeout: clear all tracks if the state topic stops publishing
+        if self.last_state_time is not None:
             if (
-                (current_time - self.last_obj_det_time).nanoseconds / 1e9
+                (current_time - self.last_state_time).nanoseconds / 1e9
             ) > self.track_timeout_sec:
                 self.latest_object_tracks = []
-
-        if self.last_sign_det_time is not None:
-            if (
-                (current_time - self.last_sign_det_time).nanoseconds / 1e9
-            ) > self.track_timeout_sec:
                 self.latest_sign_tracks = []
-
-        if self.last_cross_det_time is not None:
-            if (
-                (current_time - self.last_cross_det_time).nanoseconds / 1e9
-            ) > self.track_timeout_sec:
                 self.latest_crossing_tracks = []
 
         try:
