@@ -16,7 +16,7 @@ object_tracking_node:
     # --- Subscriber topics ---
     image_subscriber: "/camera/image/undistorted"
     object_detection_subscriber: "/object_detection/object"
-    sign_detection__subscriber: "/object_detection/sign"
+    sign_detection_subscriber: "/object_detection/sign"
     crossing_detection_subscriber: "/crossing_detection/result"
     state_subscriber: "/tracking/state" # <-- NEU!
 

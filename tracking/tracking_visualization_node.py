@@ -54,7 +54,7 @@ class TrackingVisualizationNode(SmartyNode):
                 # Subscriber topics
                 "image_subscriber": "/camera/image/undistorted",
                 "object_detection_subscriber": "/object_detection/object",
-                "sign_detection__subscriber": "/object_detection/sign",
+                "sign_detection_subscriber": "/object_detection/sign",
                 "crossing_detection_subscriber": "/crossing_detection/result",
                 # Neues gebündeltes State-Topic
                 "state_subscriber": "/tracking/state",
@@ -77,7 +77,7 @@ class TrackingVisualizationNode(SmartyNode):
                     self.object_detection_callback,
                     1,
                 ),
-                "sign_detection__subscriber": (
+                "sign_detection_subscriber": (
                     Float32MultiArray,
                     self.sign_detection_callback,
                     1,

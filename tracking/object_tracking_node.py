@@ -53,7 +53,7 @@ class ObjectTrackingNode(SmartyNode):
                 # Subscriber topics
                 "image_subscriber": None,
                 "object_detection_subscriber": None,
-                "sign_detection__subscriber": None,
+                "sign_detection_subscriber": None,
                 "crossing_detection_subscriber": None,
                 # Publisher topics (nur noch einer!)
                 "state_publisher": None,
@@ -108,7 +108,7 @@ class ObjectTrackingNode(SmartyNode):
                     self.object_detection_callback,
                     1,
                 ),
-                "sign_detection__subscriber": (
+                "sign_detection_subscriber": (
                     Float32MultiArray,
                     self.sign_detection_callback,
                     1,
