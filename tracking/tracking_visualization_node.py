@@ -100,11 +100,9 @@ class TrackingVisualizationNode(SmartyNode):
         )
         self.cv_bridge = cv_bridge.CvBridge()
 
-        # Track timeout handling (Neu: Basiert auf Detections statt State)
         self.last_obj_det_time = None
         self.last_sign_det_time = None
         self.last_cross_det_time = None
-        self.track_timeout_sec = 0.5
 
         # Storage for latest messages
         self.latest_image = None
