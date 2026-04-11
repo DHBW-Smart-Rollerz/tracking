@@ -206,14 +206,6 @@ class MultiObjectTracker:
 
         return self.get_confirmed_tracks()
 
-    def _predict_tracks(self, dt: float) -> None:
-        """
-        Predict all active tracks to the current frame.
-        """
-        # WICHTIG: .values() hinzufügen!
-        for track in self.tracks.values():
-            track.predict(dt)
-
     def _associate(
         self, detections: List[Dict]
     ) -> Tuple[List[int], List[int], List[int], List[int]]:
