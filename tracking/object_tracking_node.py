@@ -352,6 +352,7 @@ class ObjectTrackingNode(SmartyNode):
             "associate_us",
             "update_us",
             "create_delete_us",
+            "deduplicate_us",
             "total_us",
             "num_tracks",
             "num_detections",
