@@ -183,8 +183,6 @@ class ObjectTrackingNode(SmartyNode):
 
     def _process_detection(self, msg, tracker, tracker_name, last_time):
         """Shared detection processing logic for updating trackers."""
-        t_start = time.perf_counter()
-
         current_time = self.get_clock().now()
         dt = self._calculate_dt(last_time, current_time)
 
