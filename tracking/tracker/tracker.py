@@ -336,7 +336,9 @@ class MultiObjectTracker:
                 # 99% confidence region of a 2D chi-squared distribution.
                 try:
                     distance_squared = y.T @ np.linalg.inv(S) @ y
-                    distance = np.sqrt(distance_squared)
+                    # Clamp to zero before sqrt: floating-point errors in inv(S) can
+                    # produce tiny negative values, causing sqrt to return nan silently.
+                    distance = np.sqrt(max(0.0, float(distance_squared)))
                 except np.linalg.LinAlgError:
                     # S is singular (numerically degenerate covariance) — fall back to
                     # plain Euclidean distance as a safe approximation
