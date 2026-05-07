@@ -53,13 +53,15 @@ The message contains an array of `TrackedObject` entries (all three trackers bun
 
 ### 3. Track ID Ranges and Object Classes
 
-Track IDs are partitioned by tracker:
+Each object has 2 IDs: The **Class ID** identifies the class an object belongs to (e.g. car, pedestrian) while the **Track ID** is distinct for each object that ist tracked and is used to recognize known objects. Track IDs are partitioned by tracker:
 
 | Range | Tracker | Input Topic |
 |---|---|---|
 | 0 – 9999 | Object Tracker | `/object_detection/object` |
 | 10000 – 19999 | Sign Tracker | `/object_detection/sign` |
 | 20000+ | Crossing Tracker | `/crossing_detection/result` |
+
+Class IDs represent the following objects and signs:
 
 #### Object Tracker
 
