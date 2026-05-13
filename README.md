@@ -161,3 +161,45 @@ ros2 topic echo /crossing_detection/result
 For more detailed logging, set `debug: true` in `tracking_params.yaml`.
 
 For performance analysis, set `export_timing_csv: true` — on node shutdown, a CSV with per-frame timing data is written to `performance_measurements/`. The scripts in the `/test` folder can be used to visualize and compare this data.
+
+---
+
+## Performance & Evaluation
+
+### Timing Analysis
+
+Set `export_timing_csv: true` in `tracking_params.yaml`, then run the node normally (e.g. via rosbag replay). On shutdown a CSV is written to `performance_measurements/`.
+
+**Visualize a single recording:**
+```bash
+python3 test/plot_timing.py performance_measurements/tracking_timing_<date>.csv
+
+# Wall-clock time on x-axis instead of frame number:
+python3 test/plot_timing.py tracking_timing.csv --time
+```
+Generates per-tracker line charts and stacked area charts in a folder next to the CSV.
+
+**Compare two recordings (e.g. before/after a parameter change):**
+```bash
+python3 test/compare_timing.py before.csv after.csv
+python3 test/compare_timing.py before.csv after.csv --labels "Before" "After" --time
+```
+Outputs overlaid line charts and a side-by-side statistics table.
+
+---
+
+### Detection vs. Tracking Evaluation
+
+`tracking/evaluate_node.py` runs against a rosbag and ground-truth annotations and writes one JSON result file per pipeline stage (detection, tracking):
+
+```bash
+ros2 run tracking evaluate_node --mode detection --gt ground_truth.csv --out eval_detection.json
+ros2 run tracking evaluate_node --mode tracking  --gt ground_truth.csv --out eval_tracking.json
+```
+
+**Visualize results (F1-Score and mean localisation error):**
+```bash
+python3 test/plot_evaluation.py eval_detection.json eval_tracking.json
+python3 test/plot_evaluation.py eval_detection.json eval_tracking.json --out plots/ --labels "Detection" "Tracking"
+```
+Generates a bar chart comparing both pipeline stages per class.
