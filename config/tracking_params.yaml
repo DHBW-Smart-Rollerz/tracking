@@ -38,8 +38,8 @@ object_tracking_node:
     # --- Object tracker (moving objects: cars, pedestrians) ---
     # IDs: 0+
     object_max_age: 32          # Max frames without update before deletion
-    object_min_hits: 5          # Min successful updates for confirmation
-    object_min_age: 3           # Min frames for confirmation
+    object_min_hits: 6          # Min successful updates for confirmation
+    object_min_age: 5           # Min frames for confirmation
     object_max_distance: 4.5   # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     object_q_pos: 50.0          # Process noise: position (mm)
     object_q_vel: 180.0         # Process noise: velocity (mm/s)
@@ -53,9 +53,9 @@ object_tracking_node:
     # Note: Without ego-motion compensation, signs have apparent velocity in vehicle frame
     # (e.g. a sign being passed on the side moves with roughly -v_ego in vehicle coordinates).
     sign_max_age: 35            # Max frames without update before deletion
-    sign_min_hits: 4            # Min successful updates for confirmation
+    sign_min_hits: 3            # Min successful updates for confirmation
     sign_min_age: 2             # Min frames for confirmation
-    sign_max_distance: 6    # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    sign_max_distance: 7    # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
     sign_q_pos: 50.0            # Process noise: position (mm)
     sign_q_vel: 250.0           # Process noise: velocity (mm/s) — covers apparent velocity changes due to ego-motion
     sign_r_pos: 150.0           # Measurement noise: position (mm) at reference distance
