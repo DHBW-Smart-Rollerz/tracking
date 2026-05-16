@@ -26,7 +26,6 @@ import state_msgs.msg
 
 from tracking.tracker import MultiObjectTracker
 
-
 _TRACKER_PARAM_KEYS = [
     "max_age",
     "min_hits",
@@ -235,8 +234,8 @@ class ObjectTrackingNode(SmartyNode):
         now = self.get_clock().now()
         min_interval_ns = self._param("tracker_step_interval_ms") * 1_000_000
         active_trackers = [
-            (self.object_tracker,   "last_object_step_time"),
-            (self.sign_tracker,     "last_sign_step_time"),
+            (self.object_tracker, "last_object_step_time"),
+            (self.sign_tracker, "last_sign_step_time"),
         ]
         if self.crossing_tracker is not None:
             active_trackers.append((self.crossing_tracker, "last_crossing_step_time"))
@@ -265,9 +264,11 @@ class ObjectTrackingNode(SmartyNode):
             tracked_obj = state_msgs.msg.TrackedObject()
 
             # Typkonvertierung zu float64, wie in TrackedObject.msg gefordert
-            tracked_obj.tracked_id = float(obj["track_id"])
-            tracked_obj.class_id = float(obj["class_id"])
-            tracked_obj.position_x = float(obj["position"]["x"])
+            tracked_obj.tracked_id = int(obj["track_id"])  # uint32
+            tracked_obj.class_id = int(obj["class_id"])  # uint8
+            tracked_obj.position_x = float(
+                obj["position"]["x"]
+            )  # float32 – kein Cast nötig
             tracked_obj.position_y = float(obj["position"]["y"])
             tracked_obj.velocity_x = float(obj["velocity"]["vx"])
             tracked_obj.velocity_y = float(obj["velocity"]["vy"])
@@ -388,7 +389,9 @@ class ObjectTrackingNode(SmartyNode):
             f"ObjectTrackingNode initialized with {num_trackers} trackers (Timer-based publishing)"
         )
         if not crossing_enabled:
-            self.get_logger().info("Crossing tracker disabled (crossing_tracking_enabled: false)")
+            self.get_logger().info(
+                "Crossing tracker disabled (crossing_tracking_enabled: false)"
+            )
         self.get_logger().info("Subscribed topics:")
         for key in self.subscribed_topics:
             self.get_logger().info(f"  {key}: {self._param(key)}")
