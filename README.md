@@ -40,14 +40,14 @@ The message contains an array of `TrackedObject` entries (all three trackers bun
 
 | Field | Type | Description |
 |---|---|---|
-| `tracked_id` | `float64` | Stable track ID over time |
-| `class_id` | `float64` | Object class |
-| `position_x` | `float64` | x-position (mm, vehicle frame) |
-| `position_y` | `float64` | y-position (mm, vehicle frame) |
-| `velocity_x` | `float64` | Velocity in x (mm/s) |
-| `velocity_y` | `float64` | Velocity in y (mm/s) |
-| `confidence` | `float64` | Tracking confidence (0.0 – 1.0) |
-| `width` | `float64` | Object width (mm) |
+| `tracked_id` | `uint32` | Stable track ID over time |
+| `class_id` | `uint8` | Object class |
+| `position_x` | `float32` | x-position (mm, vehicle frame) |
+| `position_y` | `float32` | y-position (mm, vehicle frame) |
+| `velocity_x` | `float32` | Velocity in x (mm/s) |
+| `velocity_y` | `float32` | Velocity in y (mm/s) |
+| `confidence` | `float32` | Tracking confidence (0.0 – 1.0) |
+| `width` | `float32` | Object width (mm) |
 
 ---
 
