@@ -37,6 +37,7 @@ _TRACKER_PARAM_KEYS = [
     "r_dist_ref",
     "sigma_pos_init",
     "sigma_vel_init",
+    "duplicate_distance",
 ]
 
 
@@ -78,6 +79,7 @@ class ObjectTrackingNode(SmartyNode):
                 "object_r_dist_ref": None,
                 "object_sigma_pos_init": None,
                 "object_sigma_vel_init": None,
+                "object_duplicate_distance": None,
                 # Sign tracker parameters
                 "sign_max_age": None,
                 "sign_min_hits": None,
@@ -89,6 +91,7 @@ class ObjectTrackingNode(SmartyNode):
                 "sign_r_dist_ref": None,
                 "sign_sigma_pos_init": None,
                 "sign_sigma_vel_init": None,
+                "sign_duplicate_distance": None,
                 # Crossing tracker parameters
                 "crossing_max_age": None,
                 "crossing_min_hits": None,
@@ -100,6 +103,7 @@ class ObjectTrackingNode(SmartyNode):
                 "crossing_r_dist_ref": None,
                 "crossing_sigma_pos_init": None,
                 "crossing_sigma_vel_init": None,
+                "crossing_duplicate_distance": None,
             },
             subscribed_topics={
                 "object_detection_subscriber": (

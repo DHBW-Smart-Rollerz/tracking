@@ -43,7 +43,7 @@ class MultiObjectTracker:
         sigma_pos_init: float = None,
         sigma_vel_init: float = None,
         id_offset: int = None,
-        duplicate_distance: float = 0.0,
+        duplicate_distance: float = None,
     ):
         """
         Initialize the Multi-Object Tracker.
@@ -169,7 +169,7 @@ class MultiObjectTracker:
         t4 = time.perf_counter()
 
         # 6. Deduplicate: remove duplicate tracks of the same class that are too close
-        if self.duplicate_distance > 0:
+        if self.duplicate_distance is not None and self.duplicate_distance > 0:
             self._deduplicate_tracks()
         t5 = time.perf_counter()
 

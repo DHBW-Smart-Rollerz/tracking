@@ -47,6 +47,7 @@ object_tracking_node:
     object_r_dist_ref: 1400.0    # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     object_sigma_pos_init: 100.0    # Initial position uncertainty (mm)
     object_sigma_vel_init: 500.0   # Initial velocity uncertainty (mm/s)
+    object_duplicate_distance: 0.0  # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
 
     # --- Sign tracker (traffic signs) ---
     # IDs: 10000+
@@ -62,6 +63,7 @@ object_tracking_node:
     sign_r_dist_ref: 1400.0     # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     sign_sigma_pos_init: 100.0  # Initial position uncertainty (mm)
     sign_sigma_vel_init: 500.0  # Initial velocity uncertainty (mm/s) — high because ego-velocity at track creation is unknown
+    sign_duplicate_distance: 0.0  # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
 
     # --- Crossing tracker (lane lines at intersections) ---
     # IDs: 20000+
@@ -75,3 +77,4 @@ object_tracking_node:
     crossing_r_dist_ref: 1100.0 # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
     crossing_sigma_pos_init: 300.0  # Initial position uncertainty (mm)
     crossing_sigma_vel_init: 300.0  # Initial velocity uncertainty (mm/s)
+    crossing_duplicate_distance: 0.0  # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
