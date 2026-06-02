@@ -6,6 +6,57 @@ Internally, two or three independent Kalman filter-based trackers run in paralle
 
 ---
 
+## Requirements
+- Ros 2 Jazzy installation according to [Smartrollerz .dotfiles](https://github.com/DHBW-Smart-Rollerz/.dotfiles)
+- [Smarty utils](https://github.com/DHBW-Smart-Rollerz/smarty_utils)
+- [Camera Preprocessing](https://github.com/DHBW-Smart-Rollerz/camera_preprocessing)
+- [Object detection](https://github.com/DHBW-Smart-Rollerz/object_detection)
+- Google Coral TPU (never directly used in Tracking but required for detection), can be found in the SmartRollerz lab
+- PyCoral (**Run the [install_pycroal.sh](https://github.com/DHBW-Smart-Rollerz/object_detection/blob/jazzy/install_pycoral.sh) script that is provided by the object detection)
+> **_NOTE:_** There're no further Python packages required. All packages that are used are already required by Smarty utils or object detection
+
+---
+
+## Running
+1. Rosbags are recordings of test drives with the vehicle. They are used for testing on your Laptop and can be found on the [NAS](https://it-nas.dhbw-stuttgart.de:5001/?launchApp=SYNO.SDS.Drive.Application#file_id=853344289158117985). Running a rosbag means playing a recording and you can do it with this command:
+```
+$ ros2 bag play [name of your bag]
+```
+> **_NOTE:_** Please check the [official Ros 2 Jazzy documentation](https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Recording-And-Playing-Back-Data/Recording-And-Playing-Back-Data.html#play-topic-data) for further options.
+
+2. Run the camera_preprocessing node:
+```
+$ ros2 launch camera_preprocessing camera_preprocessing.launch.py 
+```
+
+3. Run the object_detection node:
+```
+$ ros2 launch object_detection object_detection.launch.py
+```
+
+4. Run your tracking node:
+```
+$ ros2 launch tracking object_tracking.launch.py
+```
+This image might give you a better understanding how the tracking is set in the ecosystem.
+![Tracking in the ecosystem image](tracking_ecosystem.png)
+
+In case you want to see a visual representation of the tracking output, you can run the visualization node:
+```
+$ ros2 run tracking tracking_visualization_node
+```
+Just like the visual outputs of the camera preprocessing and the object detection, it can be viewed in rviz:
+```
+$ ros2 run rviz2 rviz2
+```
+
+---
+
+## Useful commands
+
+
+---
+
 ## Interfaces (Input & Output)
 
 ### 1. Input (Subscribed Topics)
