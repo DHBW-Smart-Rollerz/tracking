@@ -12,13 +12,14 @@ Internally, two or three independent Kalman filter-based trackers run in paralle
 - [Camera Preprocessing](https://github.com/DHBW-Smart-Rollerz/camera_preprocessing)
 - [Object detection](https://github.com/DHBW-Smart-Rollerz/object_detection)
 - Google Coral TPU (never directly used in Tracking but required for detection), can be found in the SmartRollerz lab
-- PyCoral (**Run the [install_pycroal.sh](https://github.com/DHBW-Smart-Rollerz/object_detection/blob/jazzy/install_pycoral.sh) script that is provided by the object detection)
+- PyCoral (Run the [install_pycroal.sh](https://github.com/DHBW-Smart-Rollerz/object_detection/blob/jazzy/install_pycoral.sh) script that is provided by the object detection)
 > **_NOTE:_** There're no further Python packages required. All packages that are used are already required by Smarty utils or object detection
 
 ---
 
 ## Running
-1. Rosbags are recordings of test drives with the vehicle. They are used for testing on your Laptop and can be found on the [NAS](https://it-nas.dhbw-stuttgart.de:5001/?launchApp=SYNO.SDS.Drive.Application#file_id=853344289158117985). Running a rosbag means playing a recording and you can do it with this command:
+1. Rosbags are recordings of test drives with the vehicle. They are used for testing on your Laptop and can be found on the [NAS](https://it-nas.dhbw-stuttgart.de:5001/?launchApp=SYNO.SDS.Drive.Application#file_id=853344289158117985). 
+This is how you play the recording:
 ```
 $ ros2 bag play [name of your bag]
 ```
@@ -49,11 +50,6 @@ Just like the visual outputs of the camera preprocessing and the object detectio
 ```
 $ ros2 run rviz2 rviz2
 ```
-
----
-
-## Useful commands
-
 
 ---
 
