@@ -12,7 +12,7 @@ Internally, two or three independent Kalman filter-based trackers run in paralle
 - [Camera Preprocessing](https://github.com/DHBW-Smart-Rollerz/camera_preprocessing)
 - [Object detection](https://github.com/DHBW-Smart-Rollerz/object_detection)
 - Google Coral TPU (never directly used in Tracking but required for detection), can be found in the SmartRollerz lab
-- PyCoral (Run the [install_pycroal.sh](https://github.com/DHBW-Smart-Rollerz/object_detection/blob/jazzy/install_pycoral.sh) script that is provided by the object detection)
+- PyCoral (Run the [install_pycoral.sh](https://github.com/DHBW-Smart-Rollerz/object_detection/blob/jazzy/install_pycoral.sh) script that is provided by the object detection)
 > **_NOTE:_** There're no further Python packages required. All packages that are used are already required by Smarty utils or object detection
 
 ---
