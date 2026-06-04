@@ -100,7 +100,7 @@ The message contains an array of `TrackedObject` entries (all three trackers bun
 
 ### 3. Track ID Ranges and Object Classes
 
-Each object has 2 IDs: The **Class ID** identifies the class an object belongs to (e.g. car, pedestrian) while the **Track ID** is distinct for each object that ist tracked and is used to recognize known objects. Track IDs are partitioned by tracker:
+Each object has 2 IDs: The **Class ID** identifies the class an object belongs to (e.g. car, pedestrian) while the **Track ID** is distinct for each object that is tracked and is used to recognize known objects. Track IDs are partitioned by tracker:
 
 | Range | Tracker | Input Topic |
 |---|---|---|
