@@ -343,6 +343,15 @@ class EvaluationNode(Node):
             px, py = self._world_to_pixel(wx, wy)
             preds_px.append((class_id, px, py))
 
+        # FOV-Filter: Tracks außerhalb des Kamerabildes ausschließen.
+        # Der KF verfolgt Objekte auch wenn sie nicht sichtbar sind – diese
+        # können nicht in der GT auftauchen und würden sonst als FP gezählt.
+        preds_px = [
+            (cid, px, py)
+            for (cid, px, py) in preds_px
+            if 0.0 <= px < self.image_width and 0.0 <= py < self.image_height
+        ]
+
         # Matching
         matched, unmatched_preds, unmatched_gts = greedy_match(
             preds_px, gt_objects, self.threshold_px

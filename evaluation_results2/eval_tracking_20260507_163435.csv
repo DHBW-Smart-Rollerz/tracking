@@ -1,0 +1,6 @@
+class_id,class_name,tp,fp,fn,precision,recall,f1,mean_err_px
+2,VEHICLE,0,0,2,0.0,0.0,0.0,
+6,FAST_TRACK_LIFTED,0,0,6,0.0,0.0,0.0,
+16,TURN_RIGHT,0,0,6,0.0,0.0,0.0,
+17,GIVE_WAY,0,0,2,0.0,0.0,0.0,
+TOTAL,GESAMT,0,0,16,0.0,0.0,0.0,

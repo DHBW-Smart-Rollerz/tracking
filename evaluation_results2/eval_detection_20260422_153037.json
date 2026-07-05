@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "mode": "detection",
+    "threshold_px": 200.0,
+    "frame_step": 5,
+    "evaluated_frames": 251,
+    "timestamp": "20260422_153037"
+  },
+  "per_class": [
+    {
+      "class_id": 1,
+      "class_name": "STOP",
+      "tp": 20,
+      "fp": 24,
+      "fn": 2,
+      "precision": 0.4545,
+      "recall": 0.9091,
+      "f1": 0.6061,
+      "mean_err_px": 48.93
+    },
+    {
+      "class_id": 2,
+      "class_name": "VEHICLE",
+      "tp": 60,
+      "fp": 25,
+      "fn": 48,
+      "precision": 0.7059,
+      "recall": 0.5556,
+      "f1": 0.6218,
+      "mean_err_px": 25.49
+    },
+    {
+      "class_id": 3,
+      "class_name": "NO_OVERTAKING",
+      "tp": 0,
+      "fp": 0,
+      "fn": 17,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 4,
+      "class_name": "NO_OVERTAKING_LIFTED",
+      "tp": 0,
+      "fp": 0,
+      "fn": 7,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "FAST_TRACK_LIFTED",
+      "tp": 0,
+      "fp": 0,
+      "fn": 19,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 9,
+      "class_name": "CROSSWALK = 9",
+      "tp": 16,
+      "fp": 0,
+      "fn": 9,
+      "precision": 1.0,
+      "recall": 0.64,
+      "f1": 0.7805,
+      "mean_err_px": 49.29
+    },
+    {
+      "class_id": 10,
+      "class_name": "PEDESTRIAN",
+      "tp": 87,
+      "fp": 74,
+      "fn": 18,
+      "precision": 0.5404,
+      "recall": 0.8286,
+      "f1": 0.6541,
+      "mean_err_px": 16.51
+    },
+    {
+      "class_id": 13,
+      "class_name": "PRIORITY_ONCOMING_TRAFFIC",
+      "tp": 0,
+      "fp": 0,
+      "fn": 21,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 14,
+      "class_name": "PARKING",
+      "tp": 48,
+      "fp": 1,
+      "fn": 17,
+      "precision": 0.9796,
+      "recall": 0.7385,
+      "f1": 0.8421,
+      "mean_err_px": 32.52
+    },
+    {
+      "class_id": 15,
+      "class_name": "TURN_LEFT",
+      "tp": 9,
+      "fp": 5,
+      "fn": 28,
+      "precision": 0.6429,
+      "recall": 0.2432,
+      "f1": 0.3529,
+      "mean_err_px": 75.13
+    },
+    {
+      "class_id": 16,
+      "class_name": "TURN_RIGHT",
+      "tp": 48,
+      "fp": 39,
+      "fn": 5,
+      "precision": 0.5517,
+      "recall": 0.9057,
+      "f1": 0.6857,
+      "mean_err_px": 56.87
+    },
+    {
+      "class_id": 17,
+      "class_name": "GIVE_WAY",
+      "tp": 0,
+      "fp": 19,
+      "fn": 26,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 18,
+      "class_name": "PRIORITY",
+      "tp": 0,
+      "fp": 22,
+      "fn": 34,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    }
+  ],
+  "total": {
+    "tp": 288,
+    "fp": 209,
+    "fn": 251,
+    "precision": 0.5795,
+    "recall": 0.5343,
+    "f1": 0.556,
+    "mean_err_px": 33.68
+  }
+}

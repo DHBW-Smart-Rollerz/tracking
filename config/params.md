@@ -1,4 +1,3 @@
-```
 object_tracking_node:
   ros__parameters:
     # --- Node settings ---
@@ -62,4 +61,3 @@ object_tracking_node:
     crossing_sigma_pos_init: 300.0
     crossing_sigma_vel_init: 300.0
     crossing_duplicate_distance: 0.0
-```

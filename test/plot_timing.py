@@ -26,14 +26,28 @@ except OSError:
         "seaborn-whitegrid" if "seaborn-whitegrid" in plt.style.available else "default"
     )
 
+# Font sizes tuned for embedding in A4 documents alongside body text.
+# At ~14 cm figure width the labels remain crisp and legible.
+plt.rcParams.update(
+    {
+        "font.size": 16,  # base size (legend, annotations)
+        "axes.titlesize": 16,  # chart title
+        "axes.labelsize": 16,  # x/y axis labels
+        "xtick.labelsize": 16,  # tick numbers
+        "ytick.labelsize": 16,
+        "legend.fontsize": 16,
+        "figure.titlesize": 16,
+    }
+)
+
 
 # Phase display names and colors (consistent across all plots)
 PHASES = ["predict_us", "associate_us", "update_us", "create_delete_us"]
 PHASE_LABELS = {
-    "predict_us": "Predict",
-    "associate_us": "Associate",
-    "update_us": "Update",
-    "create_delete_us": "Create/Delete",
+    "predict_us": "Vorhersage",
+    "associate_us": "Assoziation",
+    "update_us": "Korrektur",
+    "create_delete_us": "Erstellen/Löschen",
 }
 PHASE_COLORS = {
     "predict_us": "#2196F3",  # Blue
@@ -41,6 +55,13 @@ PHASE_COLORS = {
     "update_us": "#4CAF50",  # Green
     "create_delete_us": "#9C27B0",  # Purple
 }
+
+
+def slice_frames(data: dict, max_frames: int) -> dict:
+    """Return a copy of data limited to the first max_frames entries."""
+    if max_frames <= 0:
+        return data
+    return {key: arr[:max_frames] for key, arr in data.items()}
 
 
 def read_csv(filepath: str) -> dict:
@@ -119,7 +140,7 @@ def plot_line_chart(
     Create a line chart showing timing of each phase over frames or time.
     Includes total time and a secondary axis for track/detection counts.
     """
-    fig, ax1 = plt.subplots(figsize=(14, 6))
+    fig, ax1 = plt.subplots(figsize=(12, 5))
 
     x = data[x_key]
     x_label = "Time (s)" if x_key == "time_s" else "Frame"
@@ -147,35 +168,11 @@ def plot_line_chart(
     )
 
     ax1.set_xlabel(x_label)
-    ax1.set_ylabel("Duration (µs)")
-    ax1.set_title(f"Tracking Performance — {tracker_name.capitalize()} Tracker")
+    ax1.set_ylabel("Dauer (µs)")
+    # ax1.set_title(f"Tracking Performance — {tracker_name.capitalize()} Tracker")
     ax1.legend(loc="upper left")
     ax1.set_xlim(x[0], x[-1])
     ax1.set_ylim(bottom=0)
-
-    # Secondary y-axis for track/detection counts
-    ax2 = ax1.twinx()
-    # ax2.plot(
-    #     x,
-    #     data["num_tracks"],
-    #     label="Active Tracks",
-    #     color="#607D8B",
-    #     linewidth=1.0,
-    #     linestyle=":",
-    #     alpha=0.6,
-    # )
-    # ax2.plot(
-    #     x,
-    #     data["num_detections"],
-    #     label="Detections",
-    #     color="#795548",
-    #     linewidth=1.0,
-    #     linestyle=":",
-    #     alpha=0.6,
-    # )
-    ax2.set_ylabel("Count")
-    ax2.legend(loc="upper right")
-    ax2.set_ylim(bottom=0)
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"timing_lines_{tracker_name}.png")
@@ -185,12 +182,13 @@ def plot_line_chart(
 
 
 def plot_stacked_area(
-    data: dict, tracker_name: str, output_dir: str, x_key: str = "frame"
+    data: dict,
+    tracker_name: str,
+    output_dir: str,
+    x_key: str = "frame",
+    clip_percentile: float = 99.0,  # <-- neu
 ) -> str:
-    """
-    Create a stacked area chart showing how total time is composed of phases.
-    """
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots(figsize=(12, 5))
 
     x = data[x_key]
     x_label = "Time (s)" if x_key == "time_s" else "Frame"
@@ -200,12 +198,33 @@ def plot_stacked_area(
 
     ax.stackplot(x, *phase_data, labels=labels, colors=colors, alpha=0.8)
 
+    # Y-Achse auf Perzentil kappen
+    total = data["total_us"]
+    y_max = np.percentile(total, clip_percentile)
+    ax.set_ylim(bottom=0, top=y_max * 1.05)
+
+    # Anzahl geclippter Frames annotieren
+    n_clipped = int(np.sum(total > y_max))
+    # if n_clipped > 0:
+    #     ax.annotate(
+    #         f"{n_clipped} frame(s) exceed axis limit (max {total.max():.0f} µs)",
+    #         xy=(0.99, 0.97),
+    #         xycoords="axes fraction",
+    #         ha="right",
+    #         va="top",
+    #         fontsize=8,
+    #         color="#777777",
+    #         bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#cccccc", alpha=0.8),
+    #     )
+    print(
+        f"  {tracker_name}: Clipped {n_clipped} frames above {y_max:.1f} µs (max {total.max():.1f} µs)"
+    )
+
     ax.set_xlabel(x_label)
-    ax.set_ylabel("Duration (µs)")
-    ax.set_title(f"Time Composition — {tracker_name.capitalize()} Tracker")
+    ax.set_ylabel("Dauer (µs)")
+    # ax.set_title(f"Time Composition — {tracker_name.capitalize()} Tracker")
     ax.legend(loc="upper left")
     ax.set_xlim(x[0], x[-1])
-    ax.set_ylim(bottom=0)
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"timing_stacked_{tracker_name}.png")
@@ -224,7 +243,7 @@ def plot_summary_stats(trackers: dict, output_dir: str) -> str:
     if n_trackers == 0:
         return None
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(9, 5))
 
     x = np.arange(n_trackers)
     bar_width = 0.18
@@ -241,8 +260,8 @@ def plot_summary_stats(trackers: dict, output_dir: str) -> str:
         )
 
     ax.set_xlabel("Tracker")
-    ax.set_ylabel("Average Duration (µs)")
-    ax.set_title("Average Phase Duration per Tracker")
+    ax.set_ylabel("Durchschnittliche Dauer (µs)")
+    # ax.set_title("Durchschnittliche Phasendauer pro Tracker")
     ax.set_xticks(x + bar_width * (len(PHASES) - 1) / 2)
     ax.set_xticklabels([n.capitalize() for n in tracker_names])
     ax.legend()
@@ -316,6 +335,20 @@ def main():
         action="store_true",
         help="Use wall-clock time (seconds) on x-axis instead of frame number",
     )
+    parser.add_argument(
+        "--clip-percentile",
+        "-p",
+        type=float,
+        default=99.0,
+        help="Cap y-axis at this percentile of total_us (default: 99)",
+    )
+    parser.add_argument(
+        "--max-frames",
+        "-n",
+        type=int,
+        default=500,
+        help="Only plot the first N frames (default: 500, 0 = all)",
+    )
     args = parser.parse_args()
 
     if not os.path.isfile(args.csv_file):
@@ -349,12 +382,14 @@ def main():
     # Generate plots
     generated = []
     for name, data in trackers.items():
+        data = slice_frames(data, args.max_frames)
         if len(data["frame"]) < 2:
             print(f"Skipping {name}: not enough data points")
             continue
-
         generated.append(plot_line_chart(data, name, output_dir, x_key))
-        generated.append(plot_stacked_area(data, name, output_dir, x_key))
+        generated.append(
+            plot_stacked_area(data, name, output_dir, x_key, args.clip_percentile)
+        )
 
     if len(trackers) > 1:
         summary = plot_summary_stats(trackers, output_dir)

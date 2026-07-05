@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "mode": "tracking",
+    "threshold_px": 50.0,
+    "frame_step": 5,
+    "evaluated_frames": 6,
+    "timestamp": "20260507_163435"
+  },
+  "per_class": [
+    {
+      "class_id": 2,
+      "class_name": "VEHICLE",
+      "tp": 0,
+      "fp": 0,
+      "fn": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "FAST_TRACK_LIFTED",
+      "tp": 0,
+      "fp": 0,
+      "fn": 6,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 16,
+      "class_name": "TURN_RIGHT",
+      "tp": 0,
+      "fp": 0,
+      "fn": 6,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    },
+    {
+      "class_id": 17,
+      "class_name": "GIVE_WAY",
+      "tp": 0,
+      "fp": 0,
+      "fn": 2,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mean_err_px": null
+    }
+  ],
+  "total": {
+    "tp": 0,
+    "fp": 0,
+    "fn": 16,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "mean_err_px": null
+  }
+}
