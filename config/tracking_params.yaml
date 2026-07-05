@@ -1,0 +1,70 @@
+# =============================================================================
+# Object Tracking Node Parameters
+# =============================================================================
+# This file is the SINGLE SOURCE OF TRUTH for all tracking parameters.
+# Do not duplicate default values in Python code.
+# =============================================================================
+
+object_tracking_node:
+  ros__parameters:
+    # --- Node settings ---
+    debug: false
+    state: 1  # NodeState.ACTIVE
+    export_timing_csv: false  # CSV timing export on shutdown (default: off)
+    crossing_tracking_enabled: false  # set to false to disable the crossing tracker entirely
+
+    # --- Subscriber topics ---
+    image_subscriber: "/camera/image/undistorted"
+    object_detection_subscriber: "/object_detection/object"
+    sign_detection_subscriber: "/object_detection/sign"
+    crossing_detection_subscriber: "/crossing_detection/result"
+    state_subscriber: "/tracking/state"
+
+    # --- Publisher topics ---
+    state_publisher: "/tracking/state"
+
+    # --- Common parameters ---
+    dt: 0.1                       # Fallback time step (s), only used for first frame
+    publish_interval_ms: 15       # Publisher-frequence (ms)
+    tracker_step_interval_ms: 40  # Min. interval (ms) for timer-based predict step when no detection arrives
+    max_x: 3000.0                 # Max valid x position (mm) - forward range
+    max_y: 2000.0                 # Max valid y position (mm) - lateral range
+
+    # --- Object tracker (moving objects: cars, pedestrians) ---
+    object_max_age: 32              # Max frames without update before deletion
+    object_min_hits: 6              # Min successful updates for confirmation
+    object_min_age: 5               # Min frames for confirmation
+    object_max_distance: 4.5        # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    object_q_pos: 50.0              # Process noise: position (mm)
+    object_q_vel: 180.0             # Process noise: velocity (mm/s)
+    object_r_pos: 100.0             # Measurement noise: position (mm) at reference distance
+    object_r_dist_ref: 1400.0       # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
+    object_sigma_pos_init: 100.0    # Initial position uncertainty (mm)
+    object_sigma_vel_init: 500.0    # Initial velocity uncertainty (mm/s)
+    object_duplicate_distance: 0.0  # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
+
+    # --- Sign tracker (traffic signs) ---
+    sign_max_age: 35                # Max frames without update before deletion
+    sign_min_hits: 3                # Min successful updates for confirmation
+    sign_min_age: 2                 # Min frames for confirmation
+    sign_max_distance: 7            # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    sign_q_pos: 50.0                # Process noise: position (mm)
+    sign_q_vel: 250.0               # Process noise: velocity (mm/s) — covers apparent velocity changes due to ego-motion
+    sign_r_pos: 150.0               # Measurement noise: position (mm) at reference distance
+    sign_r_dist_ref: 1400.0         # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
+    sign_sigma_pos_init: 100.0      # Initial position uncertainty (mm)
+    sign_sigma_vel_init: 500.0      # Initial velocity uncertainty (mm/s) — high because ego-velocity at track creation is unknown
+    sign_duplicate_distance: 0.0    # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
+
+    # --- Crossing tracker (lane lines at intersections) ---
+    crossing_max_age: 3               # Max frames without update before deletion
+    crossing_min_hits: 1              # Min successful updates for confirmation
+    crossing_min_age: 0               # Min frames for confirmation (0 = confirm as soon as min_hits is reached)
+    crossing_max_distance: 4.5        # Max Mahalanobis distance (3.03: chi² 99%, 2 DoF)
+    crossing_q_pos: 20.0              # Process noise: position (mm)
+    crossing_q_vel: 30.0              # Process noise: velocity (mm/s)
+    crossing_r_pos: 80.0              # Measurement noise: position (mm) at reference distance
+    crossing_r_dist_ref: 1100.0       # Reference distance for R scaling (mm) — higher = less distance effect, lower = more
+    crossing_sigma_pos_init: 300.0    # Initial position uncertainty (mm)
+    crossing_sigma_vel_init: 300.0    # Initial velocity uncertainty (mm/s)
+    crossing_duplicate_distance: 0.0  # Min Euclidean distance (mm) below which duplicate tracks are suppressed (0 = disabled)
