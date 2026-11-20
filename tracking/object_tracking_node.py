@@ -268,8 +268,8 @@ class ObjectTrackingNode(SmartyNode):
             tracked_obj = state_msgs.msg.TrackedObject()
 
             # Typkonvertierung zu float64, wie in TrackedObject.msg gefordert
-            tracked_obj.tracked_id = int(obj["track_id"])  # uint32
-            tracked_obj.class_id = int(obj["class_id"])  # uint8
+            tracked_obj.tracked_id = float(obj["track_id"])  # float64 in TrackedObject.msg
+            tracked_obj.class_id = float(obj["class_id"])  # float64 in TrackedObject.msg
             tracked_obj.position_x = float(
                 obj["position"]["x"]
             )  # float32 – kein Cast nötig
